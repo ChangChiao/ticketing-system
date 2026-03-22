@@ -1,6 +1,6 @@
 ## 1. Project Setup
 
-- [ ] 1.1 Initialize Go backend project with Gin framework, configure project structure (cmd/, internal/, pkg/)
+- [x] 1.1 Initialize Go backend project with Gin framework, configure project structure (cmd/, internal/, pkg/)
 - [ ] 1.2 Initialize Next.js 14 frontend project with App Router, Tailwind CSS, and Zustand
 - [ ] 1.3 Set up PostgreSQL database with Docker Compose (dev environment)
 - [ ] 1.4 Set up Redis with Docker Compose (dev environment)

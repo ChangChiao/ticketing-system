@@ -1,0 +1,91 @@
+package main
+
+import (
+	"log"
+	"os"
+
+	"github.com/gin-gonic/gin"
+	"github.com/ticketing-system/backend/internal/config"
+	"github.com/ticketing-system/backend/internal/handler"
+	"github.com/ticketing-system/backend/internal/middleware"
+	"github.com/ticketing-system/backend/internal/repository"
+	"github.com/ticketing-system/backend/internal/service"
+	pkgredis "github.com/ticketing-system/backend/pkg/redis"
+
+	"github.com/jmoiron/sqlx"
+	_ "github.com/lib/pq"
+	goredis "github.com/redis/go-redis/v9"
+)
+
+func main() {
+	cfg := config.Load()
+
+	db, err := sqlx.Connect("postgres", cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+	defer db.Close()
+
+	rdb := goredis.NewClient(&goredis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+	})
+
+	redisClient := pkgredis.NewClient(rdb)
+
+	// Repositories
+	eventRepo := repository.NewEventRepository(db)
+	seatRepo := repository.NewSeatRepository(db)
+	orderRepo := repository.NewOrderRepository(db)
+	userRepo := repository.NewUserRepository(db)
+
+	// Services
+	eventSvc := service.NewEventService(eventRepo)
+	seatSvc := service.NewSeatService(seatRepo, redisClient)
+	orderSvc := service.NewOrderService(orderRepo, seatSvc)
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
+
+	// Handlers
+	eventHandler := handler.NewEventHandler(eventSvc)
+	seatHandler := handler.NewSeatHandler(seatSvc)
+	orderHandler := handler.NewOrderHandler(orderSvc)
+	authHandler := handler.NewAuthHandler(authSvc)
+
+	// Router
+	r := gin.Default()
+	r.Use(middleware.CORS())
+
+	api := r.Group("/api")
+	{
+		// Public routes
+		api.POST("/auth/register", authHandler.Register)
+		api.POST("/auth/login", authHandler.Login)
+		api.GET("/events", eventHandler.ListEvents)
+		api.GET("/events/:id", eventHandler.GetEvent)
+		api.GET("/events/:id/availability", seatHandler.GetAvailability)
+
+		// Payment callbacks (no auth, verified by transaction)
+		api.GET("/payments/confirm", orderHandler.ConfirmPayment)
+		api.GET("/payments/cancel", orderHandler.CancelPayment)
+
+		// Protected routes
+		protected := api.Group("")
+		protected.Use(middleware.Auth(cfg.JWTSecret))
+		{
+			protected.POST("/events/:id/allocate", seatHandler.AllocateSeats)
+			protected.POST("/orders", orderHandler.CreateOrder)
+			protected.GET("/orders", orderHandler.ListOrders)
+			protected.GET("/orders/:id", orderHandler.GetOrder)
+		}
+	}
+
+	port := cfg.Port
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("Server starting on port %s", port)
+	if err := r.Run(":" + port); err != nil {
+		log.Fatalf("failed to start server: %v", err)
+		os.Exit(1)
+	}
+}
