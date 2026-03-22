@@ -54,7 +54,8 @@ export default function QueuePage() {
   useEffect(() => {
     if (status !== "waiting" || !user) return;
 
-    const wsUrl = `ws://localhost:8080/ws?user_id=${user.id}&event_id=${eventId}`;
+    const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
+    const wsUrl = `${wsBase}/ws?user_id=${user.id}&event_id=${eventId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

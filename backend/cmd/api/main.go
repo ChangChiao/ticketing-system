@@ -61,7 +61,7 @@ func main() {
 
 	// Router
 	r := gin.Default()
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg.AppBaseURL))
 	r.Use(middleware.IPRateLimit(30, time.Minute)) // 30 req/min for unauthenticated
 
 	api := r.Group("/api")
