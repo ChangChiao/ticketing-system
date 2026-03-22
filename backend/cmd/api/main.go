@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ticketing-system/backend/internal/config"
@@ -10,6 +11,7 @@ import (
 	"github.com/ticketing-system/backend/internal/middleware"
 	"github.com/ticketing-system/backend/internal/repository"
 	"github.com/ticketing-system/backend/internal/service"
+	"github.com/ticketing-system/backend/internal/ws"
 	pkgredis "github.com/ticketing-system/backend/pkg/redis"
 
 	"github.com/jmoiron/sqlx"
@@ -44,16 +46,23 @@ func main() {
 	seatSvc := service.NewSeatService(seatRepo, redisClient)
 	orderSvc := service.NewOrderService(orderRepo, seatSvc)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
+	queueSvc := service.NewQueueService(redisClient)
+
+	// WebSocket Hub
+	wsHub := ws.NewHub()
+	go wsHub.Run()
 
 	// Handlers
 	eventHandler := handler.NewEventHandler(eventSvc)
 	seatHandler := handler.NewSeatHandler(seatSvc)
 	orderHandler := handler.NewOrderHandler(orderSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
+	queueHandler := handler.NewQueueHandler(queueSvc)
 
 	// Router
 	r := gin.Default()
 	r.Use(middleware.CORS())
+	r.Use(middleware.IPRateLimit(30, time.Minute)) // 30 req/min for unauthenticated
 
 	api := r.Group("/api")
 	{
@@ -71,13 +80,21 @@ func main() {
 		// Protected routes
 		protected := api.Group("")
 		protected.Use(middleware.Auth(cfg.JWTSecret))
+		protected.Use(middleware.RateLimit(100, time.Minute)) // 100 req/min per user
 		{
+			protected.POST("/events/:id/queue/join", queueHandler.JoinQueue)
+			protected.GET("/events/:id/queue/position", queueHandler.GetPosition)
 			protected.POST("/events/:id/allocate", seatHandler.AllocateSeats)
 			protected.POST("/orders", orderHandler.CreateOrder)
 			protected.GET("/orders", orderHandler.ListOrders)
 			protected.GET("/orders/:id", orderHandler.GetOrder)
 		}
 	}
+
+	// WebSocket endpoint
+	r.GET("/ws", func(c *gin.Context) {
+		wsHub.HandleWebSocket(c.Writer, c.Request)
+	})
 
 	port := cfg.Port
 	if port == "" {
