@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: prescale-ticketing
+spec:
+  # Run 30 minutes before common sale start times (noon)
+  schedule: "30 3 * * *"  # 11:30 AM UTC+8
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: prescaler
+              image: bitnami/kubectl:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  kubectl scale deployment ticketing-api --replicas=10
+                  kubectl scale deployment ticketing-ws --replicas=5
+                  kubectl scale deployment ticketing-frontend --replicas=5
+          restartPolicy: OnFailure

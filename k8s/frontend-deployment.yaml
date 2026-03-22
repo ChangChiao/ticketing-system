@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticketing-frontend
+  labels:
+    app: ticketing-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ticketing-frontend
+  template:
+    metadata:
+      labels:
+        app: ticketing-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ticketing-frontend:latest
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ticketing-frontend
+spec:
+  selector:
+    app: ticketing-frontend
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
