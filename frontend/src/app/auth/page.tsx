@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
+import Navbar from "@/components/Navbar";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -37,81 +38,87 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4">
-      <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center mb-6">
-          {isLogin ? "登入" : "註冊"}
-        </h1>
+    <div className="flex flex-col h-full">
+      <Navbar />
+      <main className="flex-1 flex items-center justify-center px-4">
+        <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-8 w-full max-w-md">
+          <h1 className="font-display text-2xl font-bold text-center mb-2">
+            {isLogin ? "LOGIN" : "REGISTER"}
+          </h1>
+          <p className="font-mono text-[13px] text-[var(--text-secondary)] text-center mb-6">
+            // {isLogin ? "sign_in_to_your_account" : "create_a_new_account"}
+          </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                姓名
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {!isLogin && (
+              <div className="flex flex-col gap-1.5">
+                <label className="font-mono text-[11px] text-[var(--text-secondary)]">
+                  // name
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-[var(--bg-elevated)] rounded-xl px-4 py-2.5 font-mono text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent-orange)] transition"
+                  required
+                />
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono text-[11px] text-[var(--text-secondary)]">
+                // email
               </label>
               <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-[var(--bg-elevated)] rounded-xl px-4 py-2.5 font-mono text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent-orange)] transition"
                 required
               />
             </div>
-          )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              required
-            />
-          </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="font-mono text-[11px] text-[var(--text-secondary)]">
+                // password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-[var(--bg-elevated)] rounded-xl px-4 py-2.5 font-mono text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent-orange)] transition"
+                required
+                minLength={8}
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              密碼
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              required
-              minLength={8}
-            />
-          </div>
+            {error && (
+              <p className="font-mono text-xs text-[var(--status-red)]">{error}</p>
+            )}
 
-          {error && (
-            <p className="text-red-500 text-sm">{error}</p>
-          )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full h-12 bg-[var(--accent-orange)] text-[var(--text-on-accent)] rounded-[var(--radius)] font-display text-base font-semibold hover:brightness-110 disabled:opacity-50 transition mt-2"
+            >
+              {loading ? "// processing..." : isLogin ? "登入" : "註冊"}
+            </button>
+          </form>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-purple-600 text-white py-3 rounded-lg font-bold hover:bg-purple-700 disabled:bg-gray-400 transition"
-          >
-            {loading ? "處理中..." : isLogin ? "登入" : "註冊"}
-          </button>
-        </form>
-
-        <p className="text-center mt-4 text-sm text-gray-500">
-          {isLogin ? "還沒有帳號？" : "已有帳號？"}
-          <button
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError("");
-            }}
-            className="text-purple-600 font-medium ml-1 hover:underline"
-          >
-            {isLogin ? "立即註冊" : "前往登入"}
-          </button>
-        </p>
-      </div>
-    </main>
+          <p className="text-center mt-5 font-mono text-xs text-[var(--text-secondary)]">
+            {isLogin ? "// no_account?" : "// have_account?"}
+            <button
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setError("");
+              }}
+              className="text-[var(--accent-orange)] font-semibold ml-1 hover:underline"
+            >
+              {isLogin ? "register" : "login"}
+            </button>
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }

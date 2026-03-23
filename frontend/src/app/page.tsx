@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Navbar from "@/components/Navbar";
 
 interface EventItem {
   id: string;
@@ -12,6 +13,27 @@ interface EventItem {
   sale_status: string;
   sale_start: string;
   image_url: string;
+}
+
+const gradients = [
+  "from-[#FF6B35] to-[#1A1A1A]",
+  "from-[#00D4AA] to-[#1A1A1A]",
+  "from-[#eab308] to-[#1A1A1A]",
+  "from-[#ef4444] to-[#1A1A1A]",
+  "from-[#7c3aed] to-[#1A1A1A]",
+];
+
+function getStatusBadge(status: string) {
+  switch (status) {
+    case "熱賣中":
+      return { label: "ON SALE", bg: "bg-[var(--accent-teal)]" };
+    case "即將開賣":
+      return { label: "即將開賣", bg: "bg-[var(--accent-orange)]" };
+    case "已售完":
+      return { label: "SOLD OUT", bg: "bg-[var(--status-grey)]" };
+    default:
+      return { label: status, bg: "bg-[var(--bg-placeholder)]" };
+  }
 }
 
 export default function HomePage() {
@@ -28,59 +50,90 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg text-gray-500">載入中...</div>
+      <div className="flex flex-col h-full">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <span className="font-mono text-[var(--text-secondary)]">// loading...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <main className="max-w-6xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">演唱會售票</h1>
-      {events.length === 0 ? (
-        <p className="text-gray-500">目前沒有活動</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {events.map((event) => (
-            <Link
-              key={event.id}
-              href={`/events/${event.id}`}
-              className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden"
-            >
-              <div className="h-48 bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                <span className="text-white text-xl font-bold">
-                  {event.title}
-                </span>
-              </div>
-              <div className="p-4">
-                <h2 className="text-lg font-semibold mb-2">{event.title}</h2>
-                <p className="text-sm text-gray-600 mb-1">
-                  {new Date(event.event_date).toLocaleDateString("zh-TW")}
-                </p>
-                <p className="text-sm text-gray-600 mb-2">
-                  {event.venue_name}
-                </p>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-purple-600">
-                    NT$ {event.price_range}
-                  </span>
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${
-                      event.sale_status === "熱賣中"
-                        ? "bg-green-100 text-green-700"
-                        : event.sale_status === "即將開賣"
-                          ? "bg-yellow-100 text-yellow-700"
-                          : "bg-gray-100 text-gray-500"
-                    }`}
-                  >
-                    {event.sale_status}
-                  </span>
-                </div>
-              </div>
-            </Link>
-          ))}
+    <div className="flex flex-col h-full">
+      <Navbar />
+      <main className="flex-1 px-12 py-10">
+        <div className="flex items-end justify-between mb-8">
+          <div>
+            <h1 className="font-display text-4xl font-bold tracking-tight">
+              UPCOMING EVENTS
+            </h1>
+            <p className="font-mono text-[13px] text-[var(--text-secondary)] mt-1">
+              // browse_available_concerts
+            </p>
+          </div>
+          <div className="flex items-center gap-2 bg-[var(--bg-card)] rounded-[var(--radius)] px-4 h-11 w-80">
+            <svg className="w-4 h-4 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+            </svg>
+            <span className="font-mono text-[13px] text-[var(--text-secondary)]">
+              search_events...
+            </span>
+          </div>
         </div>
-      )}
-    </main>
+
+        {events.length === 0 ? (
+          <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-12 text-center">
+            <p className="font-mono text-[var(--text-secondary)]">// no_events_found</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {events.map((event, i) => {
+              const badge = getStatusBadge(event.sale_status);
+              return (
+                <Link
+                  key={event.id}
+                  href={`/events/${event.id}`}
+                  className="bg-[var(--bg-card)] rounded-[var(--radius)] overflow-hidden hover:ring-1 hover:ring-[var(--accent-orange)] transition-all group"
+                >
+                  <div
+                    className={`h-[180px] bg-gradient-to-br ${gradients[i % gradients.length]} flex items-end p-5`}
+                  >
+                    <span className="font-display text-lg font-semibold text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-opacity">
+                      {event.title}
+                    </span>
+                  </div>
+                  <div className="p-5 flex flex-col gap-3">
+                    <div>
+                      <h2 className="font-display text-lg font-semibold leading-tight">
+                        {event.title}
+                      </h2>
+                      <div className="flex gap-4 mt-1.5">
+                        <span className="font-mono text-xs text-[var(--text-secondary)]">
+                          {new Date(event.event_date).toLocaleDateString("zh-TW")}
+                        </span>
+                        <span className="font-mono text-xs text-[var(--text-secondary)]">
+                          {event.venue_name}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[13px] font-semibold text-[var(--accent-orange)]">
+                        NT$ {event.price_range}
+                      </span>
+                      <span
+                        className={`${badge.bg} text-[var(--text-on-accent)] font-mono text-[11px] font-semibold px-3 py-1 rounded-lg`}
+                      >
+                        {badge.label}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

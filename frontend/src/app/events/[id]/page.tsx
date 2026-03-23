@@ -3,13 +3,17 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, type EventDetail } from "@/lib/api";
+import Navbar from "@/components/Navbar";
 
 export default function EventDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [countdown, setCountdown] = useState("");
+  const [days, setDays] = useState(0);
+  const [hours, setHours] = useState(0);
+  const [minutes, setMinutes] = useState(0);
+  const [showCountdown, setShowCountdown] = useState(false);
 
   const eventId = params.id as string;
 
@@ -26,21 +30,16 @@ export default function EventDetailPage() {
     const saleStart = new Date(event.sale_start).getTime();
 
     const timer = setInterval(() => {
-      const now = Date.now();
-      const diff = saleStart - now;
-
+      const diff = saleStart - Date.now();
       if (diff <= 0) {
-        setCountdown("");
+        setShowCountdown(false);
         clearInterval(timer);
         return;
       }
-
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-      setCountdown(`${days}天 ${hours}時 ${minutes}分 ${seconds}秒`);
+      setShowCountdown(true);
+      setDays(Math.floor(diff / (1000 * 60 * 60 * 24)));
+      setHours(Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)));
+      setMinutes(Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)));
     }, 1000);
 
     return () => clearInterval(timer);
@@ -48,114 +47,153 @@ export default function EventDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg text-gray-500">載入中...</div>
+      <div className="flex flex-col h-full">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <span className="font-mono text-[var(--text-secondary)]">// loading...</span>
+        </div>
       </div>
     );
   }
 
   if (!event) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg text-gray-500">找不到此活動</div>
+      <div className="flex flex-col h-full">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <span className="font-mono text-[var(--text-secondary)]">// event_not_found</span>
+        </div>
       </div>
     );
   }
 
   const isSaleStarted = new Date(event.sale_start).getTime() <= Date.now();
 
-  return (
-    <main className="max-w-4xl mx-auto px-4 py-8">
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="h-64 bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center">
-          <h1 className="text-4xl font-bold text-white">{event.title}</h1>
-        </div>
+  function getSectionDotColor(section: { remaining: number; quota: number }) {
+    if (section.remaining === 0) return "bg-[var(--status-grey)]";
+    const ratio = section.remaining / section.quota;
+    if (ratio > 0.5) return "bg-[var(--status-green)]";
+    if (ratio > 0.1) return "bg-[var(--status-yellow)]";
+    return "bg-[var(--status-red)]";
+  }
 
-        <div className="p-6">
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div>
-              <p className="text-sm text-gray-500">演出日期</p>
-              <p className="text-lg font-semibold">
-                {new Date(event.event_date).toLocaleDateString("zh-TW", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                  weekday: "long",
-                })}
+  return (
+    <div className="flex flex-col h-full">
+      <Navbar />
+      <main className="flex-1 flex gap-8 px-12 py-10 overflow-hidden">
+        {/* Left column */}
+        <div className="flex-1 flex flex-col gap-6 overflow-auto">
+          {/* Hero */}
+          <div className="relative h-[300px] rounded-[var(--radius)] overflow-hidden bg-gradient-to-br from-[#FF6B35] via-[#2D2D2D] to-[#1A1A1A]">
+            <div className="absolute inset-0 flex flex-col justify-end p-7 gap-2">
+              <h1 className="font-display text-[28px] font-bold">{event.title}</h1>
+              <p className="font-mono text-[13px] text-[var(--text-secondary)]">
+                // {new Date(event.event_date).toLocaleDateString("zh-TW")} — {event.venue_name}
               </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">演出場館</p>
-              <p className="text-lg font-semibold">{event.venue_name}</p>
             </div>
           </div>
 
-          {countdown && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-center">
-              <p className="text-sm text-yellow-600 mb-1">距離開賣</p>
-              <p className="text-2xl font-bold text-yellow-700">{countdown}</p>
+          {/* Event info */}
+          <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-5 flex flex-col gap-3">
+            <span className="font-display text-base font-semibold text-[var(--accent-orange)]">
+              [EVENT_INFO]
+            </span>
+            <p className="font-mono text-[13px] text-[var(--text-secondary)] leading-relaxed">
+              {(event as EventDetail & { description?: string }).description || "活動詳細資訊"}
+            </p>
+          </div>
+
+          {/* Detail cards */}
+          <div className="flex gap-4">
+            <div className="flex-1 bg-[var(--bg-card)] rounded-[var(--radius)] p-4 flex flex-col gap-1.5">
+              <span className="font-mono text-[11px] text-[var(--text-secondary)]">// date</span>
+              <span className="font-mono text-[13px] font-semibold">
+                {new Date(event.event_date).toLocaleDateString("zh-TW", {
+                  year: "numeric", month: "long", day: "numeric", weekday: "short",
+                })}
+              </span>
+            </div>
+            <div className="flex-1 bg-[var(--bg-card)] rounded-[var(--radius)] p-4 flex flex-col gap-1.5">
+              <span className="font-mono text-[11px] text-[var(--text-secondary)]">// time</span>
+              <span className="font-mono text-[13px] font-semibold">19:30 入場 / 20:00 開演</span>
+            </div>
+            <div className="flex-1 bg-[var(--bg-card)] rounded-[var(--radius)] p-4 flex flex-col gap-1.5">
+              <span className="font-mono text-[11px] text-[var(--text-secondary)]">// venue</span>
+              <span className="font-mono text-[13px] font-semibold">{event.venue_name}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right sidebar */}
+        <div className="w-[380px] flex flex-col gap-5 shrink-0 overflow-auto">
+          {/* Countdown */}
+          {showCountdown && (
+            <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-6 flex flex-col items-center gap-4">
+              <span className="font-display text-base font-semibold text-[var(--accent-orange)]">
+                [SALE_COUNTDOWN]
+              </span>
+              <div className="flex items-center gap-3">
+                {[
+                  { val: String(days).padStart(2, "0"), label: "DAYS" },
+                  { val: String(hours).padStart(2, "0"), label: "HRS" },
+                  { val: String(minutes).padStart(2, "0"), label: "MIN" },
+                ].map((item, i) => (
+                  <div key={item.label} className="flex items-center gap-3">
+                    {i > 0 && (
+                      <span className="font-display text-4xl font-bold text-[var(--text-secondary)]">:</span>
+                    )}
+                    <div className="w-16 bg-[var(--bg-elevated)] rounded-xl p-3 flex flex-col items-center gap-1">
+                      <span className="font-display text-4xl font-bold">{item.val}</span>
+                      <span className="font-mono text-[9px] font-semibold text-[var(--text-secondary)]">
+                        {item.label}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          <h2 className="text-xl font-bold mb-4">票價資訊</h2>
-          <div className="border rounded-lg overflow-hidden mb-6">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">
-                    區域
-                  </th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">
-                    票價
-                  </th>
-                  <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">
-                    剩餘
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {event.sections.map((section) => (
-                  <tr key={section.id} className="border-t">
-                    <td className="px-4 py-3 font-medium">
-                      {section.section_name}
-                    </td>
-                    <td className="px-4 py-3 text-right text-purple-600 font-semibold">
-                      NT$ {section.price.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span
-                        className={`px-2 py-1 rounded text-sm ${
-                          section.remaining === 0
-                            ? "bg-gray-100 text-gray-500"
-                            : section.remaining < section.quota * 0.1
-                              ? "bg-red-100 text-red-600"
-                              : "bg-green-100 text-green-600"
-                        }`}
-                      >
-                        {section.remaining === 0
-                          ? "售完"
-                          : `${section.remaining} 張`}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Ticket sections */}
+          <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-5 flex flex-col gap-3">
+            <span className="font-display text-base font-semibold text-[var(--accent-orange)]">
+              [TICKET_SECTIONS]
+            </span>
+            {event.sections.map((section) => (
+              <div
+                key={section.id}
+                className="flex items-center justify-between bg-[var(--bg-elevated)] rounded-xl px-4 py-2.5"
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${getSectionDotColor(section)}`} />
+                  <span className="font-mono text-[13px] font-semibold">
+                    {section.section_name}
+                  </span>
+                </div>
+                <span className="font-mono text-[13px] font-semibold text-[var(--accent-orange)]">
+                  NT$ {section.price.toLocaleString()}
+                </span>
+              </div>
+            ))}
           </div>
 
+          {/* Buy button */}
           <button
             onClick={() => router.push(`/events/${eventId}/queue`)}
             disabled={!isSaleStarted}
-            className={`w-full py-4 rounded-lg text-lg font-bold transition ${
+            className={`w-full h-[52px] rounded-[var(--radius)] font-display text-lg font-semibold tracking-wide transition flex items-center justify-center gap-2 ${
               isSaleStarted
-                ? "bg-purple-600 text-white hover:bg-purple-700"
-                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                ? "bg-[var(--accent-orange)] text-[var(--text-on-accent)] hover:brightness-110"
+                : "bg-[var(--bg-placeholder)] text-[var(--text-secondary)] cursor-not-allowed"
             }`}
           >
             {isSaleStarted ? "立即購票" : "尚未開賣"}
           </button>
+          <p className="font-mono text-[11px] text-[var(--text-secondary)] text-center">
+            // max 4 tickets per transaction
+          </p>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

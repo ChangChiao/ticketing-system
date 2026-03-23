@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { api, type Order, type OrderItem } from "@/lib/api";
+import Navbar from "@/components/Navbar";
 
 export default function ConfirmationPage() {
   const params = useParams();
@@ -25,72 +27,111 @@ export default function ConfirmationPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg text-gray-500">載入中...</div>
+      <div className="flex flex-col h-full">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <span className="font-mono text-[var(--text-secondary)]">// loading...</span>
+        </div>
       </div>
     );
   }
 
   if (!order) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg text-gray-500">找不到此訂單</div>
+      <div className="flex flex-col h-full">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <span className="font-mono text-[var(--text-secondary)]">// order_not_found</span>
+        </div>
       </div>
     );
   }
 
+  const isConfirmed = order.status === "confirmed";
+
   return (
-    <main className="max-w-2xl mx-auto px-4 py-8">
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="bg-green-500 px-6 py-8 text-center text-white">
-          <div className="text-5xl mb-4">✓</div>
-          <h1 className="text-2xl font-bold">購票成功！</h1>
-          <p className="text-green-100 mt-2">訂單編號: {order.id.slice(0, 8).toUpperCase()}</p>
+    <div className="flex flex-col h-full">
+      <Navbar />
+      <main className="flex-1 flex flex-col items-center px-[200px] py-10 gap-8 overflow-auto">
+        {/* Success icon */}
+        <div
+          className={`w-24 h-24 rounded-full border-2 flex items-center justify-center ${
+            isConfirmed
+              ? "border-[var(--accent-teal)] bg-[#00D4AA22]"
+              : "border-[var(--status-yellow)] bg-[#eab30822]"
+          }`}
+        >
+          <span className={`text-4xl ${isConfirmed ? "text-[var(--accent-teal)]" : "text-[var(--status-yellow)]"}`}>
+            {isConfirmed ? "✓" : "⏳"}
+          </span>
         </div>
 
-        <div className="p-6">
-          <h2 className="text-lg font-bold mb-4">座位資訊</h2>
-          <div className="border rounded-lg divide-y mb-6">
-            {items.map((item, i) => (
-              <div key={i} className="flex justify-between px-4 py-3">
-                <span>
-                  {item.section_name} / {item.row_label} / {item.seat_number} 號
-                </span>
-                <span className="font-semibold">
-                  NT$ {item.price.toLocaleString()}
+        <div className="text-center">
+          <h1 className={`font-display text-4xl font-bold ${isConfirmed ? "text-[var(--accent-teal)]" : "text-[var(--status-yellow)]"}`}>
+            {isConfirmed ? "PAYMENT SUCCESSFUL" : "PAYMENT PENDING"}
+          </h1>
+          <p className="font-mono text-[13px] text-[var(--text-secondary)] mt-2">
+            // order_id: {order.id.slice(0, 8).toUpperCase()}
+          </p>
+        </div>
+
+        {/* Ticket card */}
+        <div className="w-full flex bg-[var(--bg-card)] rounded-[var(--radius)] overflow-hidden">
+          {/* Left - details */}
+          <div className="flex-1 p-6 flex flex-col gap-4">
+            <span className="font-display text-lg font-semibold">
+              訂單 #{order.id.slice(0, 8).toUpperCase()}
+            </span>
+            <div className="flex flex-col gap-2.5">
+              {items.map((item, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] text-[var(--text-secondary)]">// seat {i + 1}</span>
+                  <span className="font-mono text-xs font-semibold">
+                    {item.section_name} / {item.row_label} / {item.seat_number}號
+                  </span>
+                </div>
+              ))}
+              <div className="h-px bg-[var(--bg-elevated)] my-1" />
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[11px] text-[var(--text-secondary)]">// total</span>
+                <span className="font-display text-xl font-bold text-[var(--accent-orange)]">
+                  NT$ {order.total.toLocaleString()}
                 </span>
               </div>
-            ))}
-          </div>
-
-          <div className="flex justify-between text-xl font-bold mb-6">
-            <span>總計</span>
-            <span className="text-purple-600">
-              NT$ {order.total.toLocaleString()}
-            </span>
-          </div>
-
-          {/* QR Code placeholder */}
-          <div className="border-2 border-dashed rounded-lg p-8 text-center mb-6">
-            <div className="bg-gray-100 w-48 h-48 mx-auto rounded-lg flex items-center justify-center mb-4">
-              <span className="text-gray-400 text-sm">
-                QR Code<br />
-                {order.id.slice(0, 8).toUpperCase()}
-              </span>
             </div>
-            <p className="text-sm text-gray-500">
-              入場時請出示此 QR Code
-            </p>
           </div>
 
-          <a
-            href="/orders"
-            className="block w-full text-center bg-purple-600 text-white py-3 rounded-lg font-bold hover:bg-purple-700 transition"
-          >
-            查看我的訂單
-          </a>
+          {/* Right - QR code */}
+          {isConfirmed && (
+            <div className="w-[180px] bg-[var(--bg-elevated)] flex flex-col items-center justify-center gap-3 p-5">
+              <div className="w-[120px] h-[120px] bg-white rounded-lg flex items-center justify-center">
+                <div className="w-[100px] h-[100px] bg-[var(--bg-page)] rounded flex items-center justify-center">
+                  <span className="font-mono text-[10px] text-[var(--text-secondary)] text-center">
+                    QR CODE<br />
+                    {order.id.slice(0, 8).toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              <span className="font-mono text-[9px] text-[var(--text-secondary)]">// scan_to_enter</span>
+            </div>
+          )}
         </div>
-      </div>
-    </main>
+
+        {/* Actions */}
+        <Link
+          href="/orders"
+          className="w-full h-12 flex items-center justify-center gap-2 bg-[var(--bg-card)] border border-[var(--accent-teal)] rounded-[var(--radius)] font-mono text-[13px] font-semibold text-[var(--accent-teal)] hover:bg-[var(--bg-elevated)] transition"
+        >
+          查看我的訂單
+        </Link>
+
+        <Link
+          href="/"
+          className="font-mono text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
+        >
+          // return_to_home
+        </Link>
+      </main>
+    </div>
   );
 }

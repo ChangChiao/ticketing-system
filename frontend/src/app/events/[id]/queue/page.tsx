@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
+import Navbar from "@/components/Navbar";
 
 export default function QueuePage() {
   const params = useParams();
@@ -12,13 +13,13 @@ export default function QueuePage() {
   const token = useAuthStore((s) => s.token);
 
   const [position, setPosition] = useState<number | null>(null);
+  const [totalInQueue, setTotalInQueue] = useState(0);
   const [estimatedWait, setEstimatedWait] = useState("");
   const [status, setStatus] = useState<"joining" | "waiting" | "your_turn">("joining");
   const [error, setError] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const turnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Join queue on mount
   useEffect(() => {
     if (!token) {
       router.push("/auth");
@@ -40,6 +41,7 @@ export default function QueuePage() {
           return;
         }
         setPosition(data.position);
+        setTotalInQueue(data.total_in_queue || data.position + 100);
         setEstimatedWait(data.estimated_wait);
         setStatus("waiting");
       } catch {
@@ -50,7 +52,6 @@ export default function QueuePage() {
     joinQueue();
   }, [eventId, token, router]);
 
-  // WebSocket connection
   useEffect(() => {
     if (status !== "waiting" || !user) return;
 
@@ -64,21 +65,20 @@ export default function QueuePage() {
         const msg = JSON.parse(event.data);
         if (msg.type === "queue_update") {
           setPosition(msg.data.position);
+          setTotalInQueue(msg.data.total_in_queue || totalInQueue);
           setEstimatedWait(msg.data.estimated_wait);
           if (msg.data.status === "your_turn") {
             setStatus("your_turn");
-            // 60 second window to enter selection page
             turnTimerRef.current = setTimeout(() => {
               setError("您未在時間內進入選位頁面，已重新排隊");
               setStatus("waiting");
             }, 60000);
           }
         }
-      } catch {}
+      } catch { /* ignore parse errors */ }
     };
 
     ws.onclose = () => {
-      // Attempt reconnection within 30 seconds
       setTimeout(() => {
         if (wsRef.current === ws) {
           const reconnect = new WebSocket(wsUrl);
@@ -91,7 +91,7 @@ export default function QueuePage() {
       ws.close();
       if (turnTimerRef.current) clearTimeout(turnTimerRef.current);
     };
-  }, [status, user, eventId]);
+  }, [status, user, eventId, totalInQueue]);
 
   const handleEnterSelection = () => {
     if (turnTimerRef.current) clearTimeout(turnTimerRef.current);
@@ -101,76 +101,124 @@ export default function QueuePage() {
 
   if (error) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-lg p-8 text-center max-w-md">
-          <p className="text-red-500 text-lg mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700"
-          >
-            重試
-          </button>
+      <div className="flex flex-col h-full">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-8 text-center max-w-md">
+            <p className="font-mono text-[var(--status-red)] text-lg mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-[var(--accent-orange)] text-[var(--text-on-accent)] font-mono text-sm font-semibold px-6 py-2 rounded-[var(--radius)] hover:brightness-110 transition"
+            >
+              重試
+            </button>
+          </div>
         </div>
-      </main>
+      </div>
     );
   }
 
+  const positionDisplay = position !== null ? (position + 1).toLocaleString() : "...";
+  const peopleAhead = position !== null ? position.toLocaleString() : "...";
+  const progressPercent = position !== null && totalInQueue > 0
+    ? Math.max(2, ((totalInQueue - position) / totalInQueue) * 100)
+    : 0;
+
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 to-indigo-900">
-      <div className="bg-white rounded-2xl shadow-2xl p-10 text-center max-w-md w-full mx-4">
+    <div className="flex flex-col h-full">
+      <Navbar />
+      <main className="flex-1 flex flex-col items-center justify-center gap-10 px-12 py-10">
         {status === "joining" && (
           <>
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-200 border-t-purple-600 mx-auto mb-6" />
-            <p className="text-lg text-gray-600">正在加入排隊...</p>
+            <div className="w-20 h-20 bg-[var(--bg-card)] rounded-full flex items-center justify-center">
+              <div className="w-9 h-9 border-4 border-[var(--accent-orange)] border-t-transparent rounded-full animate-spin" />
+            </div>
+            <span className="font-mono text-[var(--text-secondary)]">// joining_queue...</span>
           </>
         )}
 
         {status === "waiting" && (
           <>
-            <div className="mb-6">
-              <div className="relative w-24 h-24 mx-auto">
-                <div className="absolute inset-0 rounded-full border-4 border-purple-100" />
-                <div className="absolute inset-0 rounded-full border-4 border-purple-500 border-t-transparent animate-spin" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-2xl font-bold text-purple-600">
-                    {position !== null ? position + 1 : "..."}
-                  </span>
-                </div>
+            <div className="w-20 h-20 bg-[var(--bg-card)] rounded-full flex items-center justify-center">
+              <div className="w-9 h-9 border-4 border-[var(--accent-orange)] border-t-transparent rounded-full animate-spin" />
+            </div>
+
+            <div className="text-center">
+              <h1 className="font-display text-4xl font-bold">WAITING ROOM</h1>
+              <p className="font-mono text-[13px] text-[var(--text-secondary)] mt-2">
+                // 排隊等候中
+              </p>
+            </div>
+
+            {/* Stats */}
+            <div className="flex gap-8">
+              <div className="w-[200px] bg-[var(--bg-card)] rounded-[var(--radius)] p-6 flex flex-col items-center gap-2">
+                <span className="font-mono text-[11px] text-[var(--text-secondary)]">// your_position</span>
+                <span className="font-display text-5xl font-bold text-[var(--accent-orange)]">{positionDisplay}</span>
+                <span className="font-mono text-[11px] text-[var(--text-secondary)]">of {totalInQueue.toLocaleString()} in queue</span>
+              </div>
+              <div className="w-[200px] bg-[var(--bg-card)] rounded-[var(--radius)] p-6 flex flex-col items-center gap-2">
+                <span className="font-mono text-[11px] text-[var(--text-secondary)]">// est_wait_time</span>
+                <span className="font-display text-5xl font-bold text-[var(--accent-teal)]">~{estimatedWait || "?"}</span>
+                <span className="font-mono text-[11px] text-[var(--text-secondary)]">minutes remaining</span>
+              </div>
+              <div className="w-[200px] bg-[var(--bg-card)] rounded-[var(--radius)] p-6 flex flex-col items-center gap-2">
+                <span className="font-mono text-[11px] text-[var(--text-secondary)]">// people_ahead</span>
+                <span className="font-display text-5xl font-bold">{peopleAhead}</span>
+                <span className="font-mono text-[11px] text-[var(--text-secondary)]">users before you</span>
               </div>
             </div>
 
-            <h2 className="text-xl font-bold mb-2">排隊等候中</h2>
-            <p className="text-gray-500 mb-4">
-              您前方還有 <span className="font-bold text-purple-600">{position}</span> 人
-            </p>
-            <p className="text-sm text-gray-400">預估等待時間: {estimatedWait}</p>
+            {/* Progress bar */}
+            <div className="w-[664px] flex flex-col items-center gap-3">
+              <div className="w-full h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-[var(--accent-orange)] to-[var(--accent-teal)] transition-all duration-1000"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent-teal)]" />
+                <span className="font-mono text-[11px] text-[var(--text-secondary)]">
+                  // connection_active
+                </span>
+              </div>
+            </div>
 
-            <div className="mt-8 bg-purple-50 rounded-lg p-4">
-              <p className="text-xs text-purple-600">
-                請勿關閉此頁面，輪到您時將自動通知
-              </p>
+            {/* Warning */}
+            <div className="flex items-center gap-2 bg-[var(--bg-card)] rounded-xl px-5 py-2.5">
+              <span className="text-[var(--status-yellow)]">⚠</span>
+              <span className="font-mono text-xs text-[var(--text-secondary)]">
+                請勿關閉此頁面，離開超過 30 秒將失去排隊資格
+              </span>
             </div>
           </>
         )}
 
         {status === "your_turn" && (
           <>
-            <div className="text-6xl mb-6">🎉</div>
-            <h2 className="text-2xl font-bold text-purple-600 mb-4">
-              輪到您了！
-            </h2>
-            <p className="text-gray-500 mb-6">
-              請在 60 秒內進入選位頁面
-            </p>
+            <div className="w-24 h-24 rounded-full border-2 border-[var(--accent-teal)] bg-[#00D4AA22] flex items-center justify-center">
+              <span className="text-[var(--accent-teal)] text-4xl">✓</span>
+            </div>
+
+            <div className="text-center">
+              <h1 className="font-display text-4xl font-bold text-[var(--accent-teal)]">
+                YOUR TURN
+              </h1>
+              <p className="font-mono text-[13px] text-[var(--text-secondary)] mt-2">
+                // 請在 60 秒內進入選位頁面
+              </p>
+            </div>
+
             <button
               onClick={handleEnterSelection}
-              className="w-full bg-purple-600 text-white py-4 rounded-lg text-lg font-bold hover:bg-purple-700 transition animate-pulse"
+              className="w-80 h-[52px] bg-[var(--accent-orange)] text-[var(--text-on-accent)] rounded-[var(--radius)] font-display text-lg font-semibold hover:brightness-110 transition animate-pulse"
             >
               進入選位
             </button>
           </>
         )}
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

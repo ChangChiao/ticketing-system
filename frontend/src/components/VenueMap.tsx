@@ -18,6 +18,14 @@ function getSectionColor(remaining: number, quota: number): string {
   return "#ef4444"; // red
 }
 
+function getSectionBorderColor(remaining: number, quota: number): string {
+  if (remaining === 0) return "#6b7280";
+  const ratio = remaining / quota;
+  if (ratio > 0.5) return "#16a34a";
+  if (ratio > 0.1) return "#ca8a04";
+  return "#dc2626";
+}
+
 export default function VenueMap({
   sections,
   stageConfig,
@@ -42,33 +50,35 @@ export default function VenueMap({
     canvas.height = rect.height * dpr;
     ctx.scale(dpr, dpr);
 
-    // Clear
-    ctx.clearRect(0, 0, rect.width, rect.height);
+    // Clear with dark background
+    ctx.fillStyle = "#212121";
+    ctx.fillRect(0, 0, rect.width, rect.height);
 
     // Draw stage
-    ctx.fillStyle = "#1f2937";
-    ctx.fillRect(
-      (stage.x - stage.width / 2) * (rect.width / 800),
-      stage.y * (rect.height / 600),
-      stage.width * (rect.width / 800),
-      stage.height * (rect.height / 600)
-    );
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 16px sans-serif";
+    const scaleX = rect.width / 800;
+    const scaleY = rect.height / 600;
+
+    ctx.fillStyle = "#2D2D2D";
+    const stageX = (stage.x - stage.width / 2) * scaleX;
+    const stageY = stage.y * scaleY;
+    const stageW = stage.width * scaleX;
+    const stageH = stage.height * scaleY;
+
+    ctx.beginPath();
+    ctx.roundRect(stageX, stageY, stageW, stageH, [0, 0, 12, 12]);
+    ctx.fill();
+
+    ctx.fillStyle = "#777777";
+    ctx.font = `600 ${14 * Math.min(scaleX, scaleY)}px "Oswald", sans-serif`;
     ctx.textAlign = "center";
-    ctx.fillText(
-      "舞台",
-      stage.x * (rect.width / 800),
-      (stage.y + stage.height / 2 + 6) * (rect.height / 600)
-    );
+    ctx.letterSpacing = "4px";
+    ctx.fillText("STAGE", stage.x * scaleX, (stage.y + stage.height / 2 + 5) * scaleY);
+    ctx.letterSpacing = "0px";
 
     // Draw sections
     for (const section of sections) {
       const polygon = section.polygon as number[][];
       if (!polygon || polygon.length === 0) continue;
-
-      const scaleX = rect.width / 800;
-      const scaleY = rect.height / 600;
 
       ctx.beginPath();
       ctx.moveTo(polygon[0][0] * scaleX, polygon[0][1] * scaleY);
@@ -77,33 +87,34 @@ export default function VenueMap({
       }
       ctx.closePath();
 
-      // Fill color
       const isSelected = section.section_id === selectedSectionId;
       const isHovered = hoveredSection?.section_id === section.section_id;
+      const color = getSectionColor(section.remaining, section.quota);
+      const borderColor = getSectionBorderColor(section.remaining, section.quota);
 
-      ctx.fillStyle = getSectionColor(section.remaining, section.quota);
-      ctx.globalAlpha = isSelected ? 1 : isHovered ? 0.9 : 0.7;
+      // Fill with transparency
+      ctx.fillStyle = color;
+      ctx.globalAlpha = isSelected ? 0.5 : isHovered ? 0.4 : 0.25;
       ctx.fill();
       ctx.globalAlpha = 1;
 
       // Border
-      ctx.strokeStyle = isSelected ? "#7c3aed" : "#374151";
-      ctx.lineWidth = isSelected ? 3 : 1;
+      ctx.strokeStyle = isSelected ? "#FF6B35" : borderColor;
+      ctx.lineWidth = isSelected ? 3 : 2;
       ctx.stroke();
 
       // Section name
-      const centerX =
-        (polygon.reduce((sum, p) => sum + p[0], 0) / polygon.length) * scaleX;
-      const centerY =
-        (polygon.reduce((sum, p) => sum + p[1], 0) / polygon.length) * scaleY;
+      const centerX = (polygon.reduce((sum, p) => sum + p[0], 0) / polygon.length) * scaleX;
+      const centerY = (polygon.reduce((sum, p) => sum + p[1], 0) / polygon.length) * scaleY;
 
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 14px sans-serif";
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = `600 ${12 * Math.min(scaleX, scaleY)}px "JetBrains Mono", monospace`;
       ctx.textAlign = "center";
       ctx.fillText(section.section_name, centerX, centerY - 4);
 
-      ctx.font = "12px sans-serif";
-      ctx.fillText(`NT$${section.price.toLocaleString()}`, centerX, centerY + 14);
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = `400 ${10 * Math.min(scaleX, scaleY)}px "JetBrains Mono", monospace`;
+      ctx.fillText(`NT$${section.price.toLocaleString()}`, centerX, centerY + 12);
     }
   }, [sections, selectedSectionId, hoveredSection, stage]);
 
@@ -145,10 +156,10 @@ export default function VenueMap({
   };
 
   return (
-    <div className="relative">
+    <div className="relative h-full">
       <canvas
         ref={canvasRef}
-        className="w-full aspect-[4/3] cursor-pointer bg-gray-100 rounded-lg"
+        className="w-full h-full cursor-pointer rounded-[var(--radius)]"
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoveredSection(null)}
         onClick={handleClick}
@@ -156,19 +167,22 @@ export default function VenueMap({
 
       {hoveredSection && (
         <div
-          className="fixed z-50 bg-gray-900 text-white text-sm px-3 py-2 rounded shadow-lg pointer-events-none"
+          className="fixed z-50 bg-[var(--bg-elevated)] border border-[var(--bg-placeholder)] text-sm px-4 py-3 rounded-xl shadow-lg pointer-events-none"
           style={{
             left: tooltipPos.x + 12,
-            top: tooltipPos.y - 40,
+            top: tooltipPos.y - 50,
           }}
         >
-          <p className="font-bold">{hoveredSection.section_name}</p>
-          <p>NT$ {hoveredSection.price.toLocaleString()}</p>
-          <p>
-            剩餘:{" "}
+          <p className="font-mono text-xs font-semibold text-[var(--text-primary)]">
+            {hoveredSection.section_name}
+          </p>
+          <p className="font-mono text-[11px] text-[var(--accent-orange)] mt-1">
+            NT$ {hoveredSection.price.toLocaleString()}
+          </p>
+          <p className="font-mono text-[11px] text-[var(--text-secondary)] mt-0.5">
             {hoveredSection.remaining === 0
-              ? "售完"
-              : `${hoveredSection.remaining} 張`}
+              ? "// sold_out"
+              : `// ${hoveredSection.remaining} remaining`}
           </p>
         </div>
       )}
@@ -179,10 +193,8 @@ export default function VenueMap({
 function isPointInPolygon(x: number, y: number, polygon: number[][]): boolean {
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i][0],
-      yi = polygon[i][1];
-    const xj = polygon[j][0],
-      yj = polygon[j][1];
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
 
     const intersect =
       yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;

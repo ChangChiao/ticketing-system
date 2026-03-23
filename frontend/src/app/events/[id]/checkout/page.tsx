@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
 import { api, type SeatInfo } from "@/lib/api";
+import Navbar from "@/components/Navbar";
 
 interface AllocationData {
   session_id: string;
@@ -33,7 +34,6 @@ export default function CheckoutPage() {
     setAllocation(JSON.parse(stored));
   }, [eventId, router]);
 
-  // Countdown timer
   useEffect(() => {
     if (!allocation) return;
 
@@ -65,12 +65,8 @@ export default function CheckoutPage() {
         price_per_seat: allocation.price_per_seat,
       });
 
-      // Store order ID for payment flow
       sessionStorage.setItem("pending_order_id", order.id);
       sessionStorage.removeItem("allocation");
-
-      // In real implementation, redirect to LINE Pay URL returned by backend
-      // For now, redirect to payment page
       router.push(`/events/${eventId}/payment`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "建立訂單失敗");
@@ -86,64 +82,84 @@ export default function CheckoutPage() {
   const seconds = countdown % 60;
   const isUrgent = countdown <= 120;
 
+  const orderRows = [
+    { label: "// event", value: "演唱會活動" },
+    { label: "// seats", value: allocation.seats.map((s) => `${s.section_name} / ${s.row_label} / ${s.seat_number}號`).join(", ") },
+    { label: "// quantity", value: `${allocation.seats.length} 張` },
+  ];
+
   return (
-    <main className="max-w-2xl mx-auto px-4 py-8">
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        {/* Countdown bar */}
-        <div
-          className={`px-6 py-3 text-center font-bold text-white ${
-            isUrgent ? "bg-red-500 animate-pulse" : "bg-purple-600"
-          }`}
-        >
-          付款剩餘時間: {minutes}:{seconds.toString().padStart(2, "0")}
+    <div className="flex flex-col h-full">
+      <Navbar />
+      <main className="flex-1 flex flex-col items-center px-[200px] py-10 gap-8 overflow-auto">
+        <div className="text-center">
+          <h1 className="font-display text-[32px] font-bold">ORDER CONFIRMATION</h1>
+          <p className="font-mono text-[13px] text-[var(--text-secondary)] mt-2">
+            // please_review_and_complete_payment
+          </p>
         </div>
 
-        <div className="p-6">
-          <h1 className="text-2xl font-bold mb-6">訂單確認</h1>
+        {/* Timer banner */}
+        <div
+          className={`w-full flex items-center justify-center gap-3 rounded-[var(--radius)] px-5 py-3.5 border ${
+            isUrgent
+              ? "bg-[#ef444422] border-[var(--status-red)]"
+              : "bg-[var(--bg-card)] border-[var(--bg-elevated)]"
+          }`}
+        >
+          <span className={`font-mono text-[13px] font-semibold ${isUrgent ? "text-[var(--status-red)]" : "text-[var(--accent-orange)]"}`}>
+            座位保留倒數 {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")} — 逾時座位將自動釋出
+          </span>
+        </div>
 
-          <div className="border rounded-lg divide-y mb-6">
-            {allocation.seats.map((seat, i) => (
-              <div key={i} className="flex justify-between px-4 py-3">
-                <span>
-                  {seat.section_name} / {seat.row_label} / {seat.seat_number} 號
-                </span>
-                <span className="font-semibold">
-                  NT$ {allocation.price_per_seat.toLocaleString()}
-                </span>
+        {/* Order card */}
+        <div className="w-full bg-[var(--bg-card)] rounded-[var(--radius)] p-6 flex flex-col gap-5">
+          <span className="font-display text-base font-semibold text-[var(--accent-orange)]">
+            [ORDER_DETAILS]
+          </span>
+
+          {orderRows.map((row, i) => (
+            <div key={i}>
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs text-[var(--text-secondary)]">{row.label}</span>
+                <span className="font-mono text-xs font-semibold">{row.value}</span>
               </div>
-            ))}
-          </div>
+              {i < orderRows.length - 1 && (
+                <div className="h-px bg-[var(--bg-elevated)] mt-5" />
+              )}
+            </div>
+          ))}
 
-          <div className="flex justify-between text-xl font-bold mb-6">
-            <span>總計</span>
-            <span className="text-purple-600">
+          <div className="h-px bg-[var(--bg-elevated)]" />
+
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-sm font-semibold">// total_amount</span>
+            <span className="font-display text-[28px] font-bold text-[var(--accent-orange)]">
               NT$ {total.toLocaleString()}
             </span>
           </div>
-
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <p className="text-sm text-gray-500">付款方式</p>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="bg-green-500 text-white px-3 py-1 rounded text-sm font-bold">
-                LINE Pay
-              </div>
-              <span className="text-sm text-gray-600">
-                點擊下方按鈕後將跳轉至 LINE Pay 付款
-              </span>
-            </div>
-          </div>
-
-          {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-
-          <button
-            onClick={handleCheckout}
-            disabled={submitting}
-            className="w-full bg-green-500 text-white py-4 rounded-lg text-lg font-bold hover:bg-green-600 disabled:bg-gray-400 transition"
-          >
-            {submitting ? "處理中..." : `以 LINE Pay 付款 NT$ ${total.toLocaleString()}`}
-          </button>
         </div>
-      </div>
-    </main>
+
+        {error && (
+          <p className="font-mono text-xs text-[var(--status-red)]">{error}</p>
+        )}
+
+        {/* LINE Pay button */}
+        <button
+          onClick={handleCheckout}
+          disabled={submitting}
+          className="w-full h-14 bg-[#00C300] rounded-[var(--radius)] font-display text-xl font-semibold text-white hover:brightness-110 disabled:opacity-50 transition"
+        >
+          {submitting ? "// processing..." : "LINE Pay 付款"}
+        </button>
+
+        <button
+          onClick={() => router.push(`/events/${eventId}/select`)}
+          className="font-mono text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
+        >
+          // cancel_and_return_to_selection
+        </button>
+      </main>
+    </div>
   );
 }

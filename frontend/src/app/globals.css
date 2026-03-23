@@ -1,1 +1,32 @@
 @import "tailwindcss";
+
+:root {
+  --bg-page: #1A1A1A;
+  --bg-card: #212121;
+  --bg-elevated: #2D2D2D;
+  --bg-placeholder: #3D3D3D;
+  --text-primary: #FFFFFF;
+  --text-secondary: #777777;
+  --text-on-accent: #0D0D0D;
+  --accent-orange: #FF6B35;
+  --accent-teal: #00D4AA;
+  --status-green: #22c55e;
+  --status-yellow: #eab308;
+  --status-red: #ef4444;
+  --status-grey: #9ca3af;
+  --radius: 16px;
+}
+
+@layer base {
+  html, body {
+    height: 100%;
+  }
+
+  .font-display {
+    font-family: "Oswald", sans-serif;
+  }
+
+  .font-mono {
+    font-family: "JetBrains Mono", monospace;
+  }
+}

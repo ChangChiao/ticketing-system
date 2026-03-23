@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type Order } from "@/lib/api";
+import Navbar from "@/components/Navbar";
 
-const statusMap: Record<string, { label: string; color: string }> = {
-  pending: { label: "待付款", color: "bg-yellow-100 text-yellow-700" },
-  confirmed: { label: "已確認", color: "bg-green-100 text-green-700" },
-  cancelled: { label: "已取消", color: "bg-gray-100 text-gray-500" },
-  payment_pending: { label: "付款處理中", color: "bg-blue-100 text-blue-700" },
+const statusMap: Record<string, { label: string; bg: string }> = {
+  pending: { label: "PENDING", bg: "bg-[var(--status-yellow)]" },
+  confirmed: { label: "CONFIRMED", bg: "bg-[var(--accent-teal)]" },
+  cancelled: { label: "CANCELLED", bg: "bg-[var(--status-grey)]" },
+  payment_pending: { label: "PROCESSING", bg: "bg-[var(--accent-orange)]" },
 };
 
 export default function OrdersPage() {
@@ -25,62 +26,79 @@ export default function OrdersPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg text-gray-500">載入中...</div>
+      <div className="flex flex-col h-full">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <span className="font-mono text-[var(--text-secondary)]">// loading...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <main className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">我的訂單</h1>
+    <div className="flex flex-col h-full">
+      <Navbar />
+      <main className="flex-1 px-12 py-10 overflow-auto">
+        <div className="flex items-end justify-between mb-6">
+          <h1 className="font-display text-4xl font-bold">MY ORDERS</h1>
+          <span className="font-mono text-[13px] text-[var(--text-secondary)]">
+            // {orders.length} orders found
+          </span>
+        </div>
 
-      {orders.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center">
-          <p className="text-gray-400 text-lg">尚無訂單紀錄</p>
-          <Link
-            href="/"
-            className="inline-block mt-4 text-purple-600 hover:underline"
-          >
-            瀏覽活動
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {orders.map((order) => {
-            const status = statusMap[order.status] || {
-              label: order.status,
-              color: "bg-gray-100 text-gray-500",
-            };
-            return (
-              <Link
-                key={order.id}
-                href={`/orders/${order.id}/confirmation`}
-                className="block bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-6"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-sm text-gray-400">
+        {orders.length === 0 ? (
+          <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-12 text-center">
+            <p className="font-mono text-[var(--text-secondary)]">// 尚無訂單紀錄</p>
+            <Link
+              href="/"
+              className="inline-block mt-4 font-mono text-sm text-[var(--accent-orange)] hover:underline"
+            >
+              // browse_events
+            </Link>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {orders.map((order) => {
+              const status = statusMap[order.status] || {
+                label: order.status.toUpperCase(),
+                bg: "bg-[var(--bg-placeholder)]",
+              };
+              return (
+                <Link
+                  key={order.id}
+                  href={`/orders/${order.id}/confirmation`}
+                  className="flex items-center justify-between bg-[var(--bg-card)] rounded-[var(--radius)] p-5 hover:ring-1 hover:ring-[var(--accent-orange)] transition-all"
+                >
+                  <div className="flex flex-col gap-2">
+                    <span className="font-display text-base font-semibold">
                       訂單 #{order.id.slice(0, 8).toUpperCase()}
-                    </p>
-                    <p className="font-semibold mt-1">
-                      NT$ {order.total.toLocaleString()}
-                    </p>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {new Date(order.created_at).toLocaleDateString("zh-TW")}
-                    </p>
+                    </span>
+                    <div className="flex gap-4">
+                      <span className="font-mono text-[11px] text-[var(--text-secondary)]">
+                        {new Date(order.created_at).toLocaleDateString("zh-TW")}
+                      </span>
+                      <span className="font-mono text-[11px] text-[var(--text-secondary)]">
+                        tickets
+                      </span>
+                    </div>
                   </div>
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${status.color}`}
-                  >
-                    {status.label}
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </main>
+
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="font-display text-lg font-bold text-[var(--accent-orange)]">
+                      NT$ {order.total.toLocaleString()}
+                    </span>
+                    <span
+                      className={`${status.bg} text-[var(--text-on-accent)] font-mono text-[10px] font-semibold px-3 py-1 rounded-lg`}
+                    >
+                      {status.label}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

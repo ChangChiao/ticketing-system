@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, type EventDetail, type AllocatedSeats } from "@/lib/api";
 import VenueMap from "@/components/VenueMap";
+import Navbar from "@/components/Navbar";
 
 export default function SelectPage() {
   const params = useParams();
@@ -16,6 +17,7 @@ export default function SelectPage() {
   const [loading, setLoading] = useState(true);
   const [allocating, setAllocating] = useState(false);
   const [error, setError] = useState("");
+  const [timer, setTimer] = useState(600); // 10 min countdown
 
   useEffect(() => {
     api
@@ -24,6 +26,13 @@ export default function SelectPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [eventId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimer((t) => (t > 0 ? t - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const selectedSectionData = event?.sections.find(
     (s) => s.section_id === selectedSection
@@ -40,7 +49,6 @@ export default function SelectPage() {
         quantity,
       });
 
-      // Store allocation in sessionStorage for checkout
       sessionStorage.setItem(
         "allocation",
         JSON.stringify({
@@ -60,93 +68,131 @@ export default function SelectPage() {
 
   if (loading || !event) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg text-gray-500">載入場館圖...</div>
+      <div className="flex flex-col h-full">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <span className="font-mono text-[var(--text-secondary)]">// loading_venue_map...</span>
+        </div>
       </div>
     );
   }
 
-  return (
-    <main className="max-w-6xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-2">{event.title}</h1>
-      <p className="text-gray-500 mb-6">請選擇區域和張數</p>
+  const mins = Math.floor(timer / 60);
+  const secs = timer % 60;
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <VenueMap
-            sections={event.sections}
-            stageConfig={
-              (event.layout_data as { stage?: { x: number; y: number; width: number; height: number } })?.stage
-            }
-            onSelect={setSelectedSection}
-            selectedSectionId={selectedSection}
-          />
+  return (
+    <div className="flex flex-col h-full">
+      <Navbar />
+      <main className="flex-1 flex gap-8 px-12 py-8 overflow-hidden">
+        {/* Map column */}
+        <div className="flex-1 flex flex-col gap-5 min-h-0">
+          <div className="flex items-center justify-between">
+            <h1 className="font-display text-2xl font-bold">VENUE MAP</h1>
+            <div className="flex items-center gap-2 bg-[var(--bg-card)] rounded-xl px-3.5 py-1.5">
+              <span className="font-mono text-[13px] font-semibold text-[var(--accent-orange)]">
+                {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0">
+            <VenueMap
+              sections={event.sections}
+              stageConfig={
+                (event.layout_data as { stage?: { x: number; y: number; width: number; height: number } })?.stage
+              }
+              onSelect={setSelectedSection}
+              selectedSectionId={selectedSection}
+            />
+          </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          {selectedSectionData ? (
-            <>
-              <h2 className="text-lg font-bold mb-4">
-                {selectedSectionData.section_name}
-              </h2>
-              <p className="text-sm text-gray-500 mb-2">
-                票價: NT$ {selectedSectionData.price.toLocaleString()}
-              </p>
-              <p className="text-sm text-gray-500 mb-4">
-                剩餘: {selectedSectionData.remaining} 張
-              </p>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  張數
-                </label>
-                <div className="flex gap-2">
-                  {[1, 2, 3, 4].map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setQuantity(n)}
-                      disabled={n > selectedSectionData.remaining}
-                      className={`w-12 h-12 rounded-lg text-lg font-bold transition ${
-                        quantity === n
-                          ? "bg-purple-600 text-white"
-                          : n > selectedSectionData.remaining
-                            ? "bg-gray-100 text-gray-300 cursor-not-allowed"
-                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
+        {/* Side panel */}
+        <div className="w-[340px] shrink-0 flex flex-col gap-5 overflow-auto">
+          {/* Legend */}
+          <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-5 flex flex-col gap-3">
+            <span className="font-display text-sm font-semibold text-[var(--accent-orange)]">[LEGEND]</span>
+            {[
+              { color: "bg-[var(--status-green)]", label: "> 50% available" },
+              { color: "bg-[var(--status-yellow)]", label: "10-50% available" },
+              { color: "bg-[var(--status-red)]", label: "< 10% available" },
+              { color: "bg-[var(--status-grey)]", label: "sold_out" },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center gap-2">
+                <div className={`w-2.5 h-2.5 rounded-sm ${item.color}`} />
+                <span className="font-mono text-[11px] text-[var(--text-secondary)]">{item.label}</span>
               </div>
+            ))}
+          </div>
 
-              <div className="border-t pt-4 mb-4">
-                <div className="flex justify-between text-lg font-bold">
-                  <span>小計</span>
-                  <span className="text-purple-600">
-                    NT${" "}
-                    {(selectedSectionData.price * quantity).toLocaleString()}
+          {/* Selection */}
+          <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-5 flex flex-col gap-4">
+            <span className="font-display text-sm font-semibold text-[var(--accent-orange)]">[SELECTED_SECTION]</span>
+
+            {selectedSectionData ? (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-mono text-[11px] text-[var(--text-secondary)]">// section</span>
+                  <div className="bg-[var(--bg-elevated)] rounded-xl px-3.5 h-10 flex items-center justify-between">
+                    <span className="font-mono text-xs font-semibold">
+                      {selectedSectionData.section_name} — NT$ {selectedSectionData.price.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-mono text-[11px] text-[var(--text-secondary)]">// quantity (max 4)</span>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setQuantity(n)}
+                        disabled={n > selectedSectionData.remaining}
+                        className={`flex-1 h-10 rounded-xl font-mono text-sm font-semibold transition ${
+                          quantity === n
+                            ? "bg-[var(--accent-orange)] text-[var(--text-on-accent)]"
+                            : n > selectedSectionData.remaining
+                              ? "bg-[var(--bg-placeholder)] text-[var(--text-secondary)] cursor-not-allowed opacity-50"
+                              : "bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between bg-[var(--bg-elevated)] rounded-xl px-4 py-2.5">
+                  <span className="font-mono text-xs text-[var(--text-secondary)]">// total</span>
+                  <span className="font-display text-xl font-bold text-[var(--accent-orange)]">
+                    NT$ {(selectedSectionData.price * quantity).toLocaleString()}
                   </span>
                 </div>
-              </div>
+              </>
+            ) : (
+              <p className="font-mono text-xs text-[var(--text-secondary)] text-center py-8">
+                // click_a_section_on_the_map
+              </p>
+            )}
+          </div>
 
-              {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-
-              <button
-                onClick={handleAllocate}
-                disabled={allocating}
-                className="w-full bg-purple-600 text-white py-3 rounded-lg font-bold hover:bg-purple-700 disabled:bg-gray-400 transition"
-              >
-                {allocating ? "座位分配中..." : "確認選位"}
-              </button>
-            </>
-          ) : (
-            <div className="text-center text-gray-400 py-12">
-              <p className="text-lg">請在場館圖上選擇區域</p>
-            </div>
+          {error && (
+            <p className="font-mono text-xs text-[var(--status-red)] text-center">{error}</p>
           )}
+
+          <button
+            onClick={handleAllocate}
+            disabled={!selectedSection || allocating}
+            className={`w-full h-12 rounded-[var(--radius)] font-display text-base font-semibold tracking-wide transition flex items-center justify-center gap-2 ${
+              selectedSection && !allocating
+                ? "bg-[var(--accent-orange)] text-[var(--text-on-accent)] hover:brightness-110"
+                : "bg-[var(--bg-placeholder)] text-[var(--text-secondary)] cursor-not-allowed"
+            }`}
+          >
+            {allocating ? "// allocating..." : "確認選位"}
+          </button>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
