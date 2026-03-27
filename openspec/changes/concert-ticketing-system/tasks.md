@@ -93,11 +93,11 @@
 
 ## 12. Testing & Quality
 
-- [ ] 12.1 Write unit tests for seat allocation algorithm (consecutive seat finding, edge cases)
-- [ ] 12.2 Write unit tests for Redis Lua Script (atomic locking, TTL, concurrent access)
-- [ ] 12.3 Write integration tests for queue → selection → allocation → payment flow
-- [ ] 12.4 Write integration tests for LINE Pay Request/Confirm/Cancel flows
-- [ ] 12.5 Set up load testing with k6: simulate 10,000 concurrent queue joins and seat allocations
+- [x] 12.1 Write unit tests for seat allocation algorithm (consecutive seat finding, edge cases)
+- [x] 12.2 Write unit tests for Redis Lua Script (atomic locking, TTL, concurrent access)
+- [x] 12.3 Write integration tests for queue → selection → allocation → payment flow
+- [x] 12.4 Write integration tests for LINE Pay Request/Confirm/Cancel flows
+- [x] 12.5 Set up load testing with k6: simulate 10,000 concurrent queue joins and seat allocations
 
 ## 13. Deployment & Infrastructure
 
