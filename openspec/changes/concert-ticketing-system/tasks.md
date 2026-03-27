@@ -85,11 +85,11 @@
 
 ## 11. Anti-Fraud & Security
 
-- [ ] 11.1 Integrate CAPTCHA (hCaptcha or Cloudflare Turnstile) on queue entry
-- [ ] 11.2 Implement IP-based rate limiting (5 queue entries/min per IP, 30 req/min unauthenticated)
-- [ ] 11.3 Implement device fingerprint collection and rate limiting (3 queue entries per device)
-- [ ] 11.4 Implement API rate limiting middleware (100 req/min per authenticated user)
-- [ ] 11.5 Add request signature validation to prevent direct API abuse
+- [x] 11.1 Integrate CAPTCHA (hCaptcha or Cloudflare Turnstile) on queue entry
+- [x] 11.2 Implement IP-based rate limiting (5 queue entries/min per IP, 30 req/min unauthenticated)
+- [x] 11.3 Implement device fingerprint collection and rate limiting (3 queue entries per device)
+- [x] 11.4 Implement API rate limiting middleware (100 req/min per authenticated user)
+- [x] 11.5 Add request signature validation to prevent direct API abuse
 
 ## 12. Testing & Quality
 

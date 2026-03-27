@@ -89,9 +89,16 @@ func main() {
 		// Protected routes
 		protected := api.Group("")
 		protected.Use(middleware.Auth(cfg.JWTSecret))
-		protected.Use(middleware.RateLimit(100, time.Minute)) // 100 req/min per user
+		protected.Use(middleware.RateLimit(100, time.Minute))           // 100 req/min per user
+		protected.Use(middleware.RequestSignature(cfg.RequestSignSecret)) // Request signature validation
 		{
-			protected.POST("/events/:id/queue/join", queueHandler.JoinQueue)
+			// Queue join: CAPTCHA + device fingerprint + IP queue rate limit
+			protected.POST("/events/:id/queue/join",
+				middleware.CaptchaVerify(cfg.TurnstileSecretKey),
+				middleware.DeviceFingerprintLimit(3, time.Minute),     // 3 queue entries per device
+				middleware.IPRateLimit(5, time.Minute),                // 5 queue entries/min per IP
+				queueHandler.JoinQueue,
+			)
 			protected.GET("/events/:id/queue/position", queueHandler.GetPosition)
 			protected.POST("/events/:id/allocate", seatHandler.AllocateSeats)
 			protected.POST("/orders", orderHandler.CreateOrder)

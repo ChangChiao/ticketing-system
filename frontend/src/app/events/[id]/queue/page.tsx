@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { Turnstile } from "@marsidev/react-turnstile";
 import { useAuthStore } from "@/stores/auth";
+import { generateFingerprint, signRequest } from "@/lib/security";
 import Navbar from "@/components/Navbar";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 export default function QueuePage() {
   const params = useParams();
@@ -15,10 +19,48 @@ export default function QueuePage() {
   const [position, setPosition] = useState<number | null>(null);
   const [totalInQueue, setTotalInQueue] = useState(0);
   const [estimatedWait, setEstimatedWait] = useState("");
-  const [status, setStatus] = useState<"joining" | "waiting" | "your_turn">("joining");
+  const [status, setStatus] = useState<"captcha" | "joining" | "waiting" | "your_turn">(
+    TURNSTILE_SITE_KEY ? "captcha" : "joining"
+  );
+  const [captchaToken, setCaptchaToken] = useState("");
   const [error, setError] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const turnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const joinQueue = useCallback(async (captcha: string) => {
+    if (!token) return;
+    setStatus("joining");
+
+    try {
+      const fingerprint = generateFingerprint();
+      const path = `/api/events/${eventId}/queue/join`;
+      const timestamp = Date.now().toString();
+      const signature = await signRequest("POST", path, timestamp);
+
+      const res = await fetch(path, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "X-Captcha-Token": captcha,
+          "X-Device-Fingerprint": fingerprint,
+          "X-Request-Signature": signature,
+          "X-Request-Timestamp": timestamp,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "加入排隊失敗");
+        return;
+      }
+      setPosition(data.position);
+      setTotalInQueue(data.total_in_queue || data.position + 100);
+      setEstimatedWait(data.estimated_wait);
+      setStatus("waiting");
+    } catch {
+      setError("網路錯誤，請重試");
+    }
+  }, [eventId, token]);
 
   useEffect(() => {
     if (!token) {
@@ -26,31 +68,16 @@ export default function QueuePage() {
       return;
     }
 
-    const joinQueue = async () => {
-      try {
-        const res = await fetch(`/api/events/${eventId}/queue/join`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "加入排隊失敗");
-          return;
-        }
-        setPosition(data.position);
-        setTotalInQueue(data.total_in_queue || data.position + 100);
-        setEstimatedWait(data.estimated_wait);
-        setStatus("waiting");
-      } catch {
-        setError("網路錯誤，請重試");
-      }
-    };
+    // If no CAPTCHA configured, join immediately
+    if (!TURNSTILE_SITE_KEY) {
+      joinQueue("");
+    }
+  }, [token, router, joinQueue]);
 
-    joinQueue();
-  }, [eventId, token, router]);
+  const handleCaptchaSuccess = (captcha: string) => {
+    setCaptchaToken(captcha);
+    joinQueue(captcha);
+  };
 
   useEffect(() => {
     if (status !== "waiting" || !user) return;
@@ -128,6 +155,20 @@ export default function QueuePage() {
     <div className="flex flex-col h-full">
       <Navbar />
       <main className="flex-1 flex flex-col items-center justify-center gap-10 px-12 py-10">
+        {status === "captcha" && (
+          <div className="flex flex-col items-center gap-6">
+            <h1 className="font-display text-3xl font-bold">VERIFY</h1>
+            <p className="font-mono text-[13px] text-[var(--text-secondary)]">
+              // 請完成人機驗證以加入排隊
+            </p>
+            <Turnstile
+              siteKey={TURNSTILE_SITE_KEY}
+              onSuccess={handleCaptchaSuccess}
+              options={{ theme: "dark" }}
+            />
+          </div>
+        )}
+
         {status === "joining" && (
           <>
             <div className="w-20 h-20 bg-[var(--bg-card)] rounded-full flex items-center justify-center">

@@ -14,6 +14,10 @@ type Config struct {
 	LinePayChannelSecret string
 	LinePayBaseURL       string // sandbox or production
 	AppBaseURL           string // our app's public URL
+
+	// Security
+	TurnstileSecretKey string // Cloudflare Turnstile CAPTCHA
+	RequestSignSecret  string // HMAC request signature secret
 }
 
 func Load() *Config {
@@ -27,6 +31,8 @@ func Load() *Config {
 		LinePayChannelSecret: getEnv("LINEPAY_CHANNEL_SECRET", ""),
 		LinePayBaseURL:       getEnv("LINEPAY_BASE_URL", "https://sandbox-api-pay.line.me"),
 		AppBaseURL:           getEnv("APP_BASE_URL", "http://localhost:3000"),
+		TurnstileSecretKey:   getEnv("TURNSTILE_SECRET_KEY", ""),
+		RequestSignSecret:    getEnv("REQUEST_SIGN_SECRET", ""),
 	}
 }
 
