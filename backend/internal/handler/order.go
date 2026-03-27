@@ -1,19 +1,22 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/ticketing-system/backend/internal/model"
 	"github.com/ticketing-system/backend/internal/service"
+	"github.com/ticketing-system/backend/pkg/linepay"
 )
 
 type OrderHandler struct {
-	svc *service.OrderService
+	svc        *service.OrderService
+	linePayCli *linepay.Client
 }
 
-func NewOrderHandler(svc *service.OrderService) *OrderHandler {
-	return &OrderHandler{svc: svc}
+func NewOrderHandler(svc *service.OrderService, linePayCli *linepay.Client) *OrderHandler {
+	return &OrderHandler{svc: svc, linePayCli: linePayCli}
 }
 
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
@@ -35,7 +38,29 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, order)
+	// Call LINE Pay Request API to get payment URL
+	paymentOutput, err := h.linePayCli.RequestPayment(linepay.RequestPaymentInput{
+		OrderID:     order.ID,
+		Amount:      order.Total,
+		ProductName: "演唱會門票",
+		Quantity:    len(req.Seats),
+		Price:       req.PricePerSeat,
+	})
+	if err != nil {
+		log.Printf("LINE Pay request failed for order %s: %v", order.ID, err)
+		// Cancel the order since payment cannot proceed
+		_ = h.svc.CancelOrder(c.Request.Context(), order.ID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "付款服務暫時無法使用，請稍後再試"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id":             order.ID,
+		"status":         order.Status,
+		"total":          order.Total,
+		"payment_url":    paymentOutput.PaymentURL,
+		"transaction_id": paymentOutput.TransactionID,
+	})
 }
 
 func (h *OrderHandler) ListOrders(c *gin.Context) {
@@ -63,30 +88,68 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 	orderID := c.Query("orderId")
 
 	if transactionID == "" || orderID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少付款參數"})
+		c.Redirect(http.StatusFound, "/orders?error=missing_params")
+		return
+	}
+
+	// Check if seat locks have expired (task 8.5)
+	expired, err := h.svc.AreSeatsExpired(c.Request.Context(), orderID)
+	if err != nil {
+		log.Printf("Failed to check seat lock expiry for order %s: %v", orderID, err)
+		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation?error=check_failed")
+		return
+	}
+	if expired {
+		log.Printf("Seat locks expired for order %s", orderID)
+		_ = h.svc.CancelOrder(c.Request.Context(), orderID)
+		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation?error=expired")
+		return
+	}
+
+	// Call LINE Pay Confirm API with retry and exponential backoff (task 8.6)
+	order, _, err := h.svc.GetOrder(c.Request.Context(), orderID)
+	if err != nil {
+		c.Redirect(http.StatusFound, "/orders?error=order_not_found")
+		return
+	}
+
+	err = h.linePayCli.ConfirmPaymentWithRetry(linepay.ConfirmPaymentInput{
+		TransactionID: transactionID,
+		Amount:        order.Total,
+	})
+	if err != nil {
+		log.Printf("LINE Pay confirm failed for order %s after retries: %v", orderID, err)
+		// Mark as payment_pending for manual review
+		_ = h.svc.MarkPaymentPending(c.Request.Context(), orderID)
+		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation")
 		return
 	}
 
 	if err := h.svc.ConfirmOrder(c.Request.Context(), orderID, transactionID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "付款確認失敗"})
+		log.Printf("Failed to confirm order %s: %v", orderID, err)
+		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation?error=confirm_failed")
 		return
 	}
 
-	// Redirect to success page
 	c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation")
 }
 
 func (h *OrderHandler) CancelPayment(c *gin.Context) {
 	orderID := c.Query("orderId")
 	if orderID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少訂單參數"})
+		c.Redirect(http.StatusFound, "/events")
 		return
 	}
 
 	if err := h.svc.CancelOrder(c.Request.Context(), orderID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "取消訂單失敗"})
-		return
+		log.Printf("Failed to cancel order %s: %v", orderID, err)
 	}
 
+	// Get event ID from order to redirect back to event
+	order, _, err := h.svc.GetOrder(c.Request.Context(), orderID)
+	if err == nil {
+		c.Redirect(http.StatusFound, "/events/"+order.EventID+"/select")
+		return
+	}
 	c.Redirect(http.StatusFound, "/events")
 }

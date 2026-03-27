@@ -132,6 +132,21 @@ type ConfirmPaymentInput struct {
 	Amount        int
 }
 
+// ConfirmPaymentWithRetry calls ConfirmPayment with exponential backoff (up to 3 retries).
+func (c *Client) ConfirmPaymentWithRetry(input ConfirmPaymentInput) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		lastErr = c.ConfirmPayment(input)
+		if lastErr == nil {
+			return nil
+		}
+		// Exponential backoff: 1s, 2s, 4s
+		backoff := time.Duration(1<<uint(attempt)) * time.Second
+		time.Sleep(backoff)
+	}
+	return fmt.Errorf("LINE Pay confirm failed after 3 retries: %w", lastErr)
+}
+
 func (c *Client) ConfirmPayment(input ConfirmPaymentInput) error {
 	body := map[string]interface{}{
 		"amount":   input.Amount,

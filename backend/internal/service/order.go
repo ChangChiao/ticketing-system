@@ -103,6 +103,28 @@ func (s *OrderService) ConfirmOrder(ctx context.Context, orderID, transactionID 
 	return s.repo.UpdateStatus(ctx, orderID, "confirmed")
 }
 
+// AreSeatsExpired checks if seat locks for an order have expired.
+func (s *OrderService) AreSeatsExpired(ctx context.Context, orderID string) (bool, error) {
+	order, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return false, err
+	}
+	items, err := s.repo.GetOrderItems(ctx, orderID)
+	if err != nil {
+		return false, err
+	}
+	seatIDs := make([]string, len(items))
+	for i, item := range items {
+		seatIDs[i] = item.EventSeatID
+	}
+	return s.seatSvc.AreSeatLocksExpired(ctx, order.EventID, seatIDs)
+}
+
+// MarkPaymentPending sets order status to payment_pending for manual review.
+func (s *OrderService) MarkPaymentPending(ctx context.Context, orderID string) error {
+	return s.repo.UpdateStatus(ctx, orderID, "payment_pending")
+}
+
 func (s *OrderService) CancelOrder(ctx context.Context, orderID string) error {
 	order, err := s.repo.GetByID(ctx, orderID)
 	if err != nil {

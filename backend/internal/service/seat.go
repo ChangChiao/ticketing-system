@@ -89,6 +89,20 @@ func (s *SeatService) ConfirmSeats(ctx context.Context, eventID string, seatIDs 
 	return s.repo.MarkSeatsAsSold(ctx, eventID, seatIDs)
 }
 
+// AreSeatLocksExpired checks if any of the seat locks have expired in Redis.
+func (s *SeatService) AreSeatLocksExpired(ctx context.Context, eventID string, seatIDs []string) (bool, error) {
+	for _, seatID := range seatIDs {
+		locked, err := s.redis.IsSeatLocked(ctx, eventID, seatID)
+		if err != nil {
+			return false, err
+		}
+		if !locked {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (s *SeatService) findConsecutiveSeats(ctx context.Context, eventID, sectionID string, quantity int) ([]repository.RowWithSeats, error) {
 	allSeats, err := s.repo.GetAvailableSeatsInSection(ctx, eventID, sectionID)
 	if err != nil {

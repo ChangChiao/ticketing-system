@@ -12,6 +12,7 @@ import (
 	"github.com/ticketing-system/backend/internal/repository"
 	"github.com/ticketing-system/backend/internal/service"
 	"github.com/ticketing-system/backend/internal/ws"
+	"github.com/ticketing-system/backend/pkg/linepay"
 	pkgredis "github.com/ticketing-system/backend/pkg/redis"
 
 	"github.com/jmoiron/sqlx"
@@ -48,6 +49,9 @@ func main() {
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 	queueSvc := service.NewQueueService(redisClient)
 
+	// LINE Pay Client
+	linePayCli := linepay.NewClient(cfg.LinePayChannelID, cfg.LinePayChannelSecret, cfg.LinePayBaseURL, cfg.AppBaseURL)
+
 	// WebSocket Hub
 	wsHub := ws.NewHub()
 	go wsHub.Run()
@@ -55,7 +59,7 @@ func main() {
 	// Handlers
 	eventHandler := handler.NewEventHandler(eventSvc)
 	seatHandler := handler.NewSeatHandler(seatSvc)
-	orderHandler := handler.NewOrderHandler(orderSvc)
+	orderHandler := handler.NewOrderHandler(orderSvc, linePayCli)
 	authHandler := handler.NewAuthHandler(authSvc)
 	queueHandler := handler.NewQueueHandler(queueSvc)
 
