@@ -80,3 +80,15 @@ func (r *OrderRepository) UpdatePaymentStatus(ctx context.Context, orderID, stat
 	`, status, orderID)
 	return err
 }
+
+// GetPendingOrdersNearExpiry returns pending orders created between 7.5 and 8.5 minutes ago (the 2-minute warning window).
+func (r *OrderRepository) GetPendingOrdersNearExpiry(ctx context.Context) ([]model.Order, error) {
+	var orders []model.Order
+	err := r.db.SelectContext(ctx, &orders, `
+		SELECT * FROM orders
+		WHERE status = 'pending'
+		AND created_at <= NOW() - INTERVAL '7 minutes 30 seconds'
+		AND created_at > NOW() - INTERVAL '8 minutes 30 seconds'
+	`)
+	return orders, err
+}

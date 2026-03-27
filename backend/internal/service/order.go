@@ -2,20 +2,51 @@ package service
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/ticketing-system/backend/internal/model"
 	"github.com/ticketing-system/backend/internal/repository"
+	pkgredis "github.com/ticketing-system/backend/pkg/redis"
 )
 
 type OrderService struct {
 	repo    *repository.OrderRepository
 	seatSvc *SeatService
+	redis   *pkgredis.Client
 }
 
-func NewOrderService(repo *repository.OrderRepository, seatSvc *SeatService) *OrderService {
-	return &OrderService{repo: repo, seatSvc: seatSvc}
+func NewOrderService(repo *repository.OrderRepository, seatSvc *SeatService, redis *pkgredis.Client) *OrderService {
+	return &OrderService{repo: repo, seatSvc: seatSvc, redis: redis}
+}
+
+// StartPaymentWarningWorker periodically checks for pending orders nearing the 8-minute mark
+// and publishes a 2-minute countdown warning via Redis Pub/Sub.
+func (s *OrderService) StartPaymentWarningWorker(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			orders, err := s.repo.GetPendingOrdersNearExpiry(ctx)
+			if err != nil {
+				log.Printf("payment warning worker: %v", err)
+				continue
+			}
+			for _, order := range orders {
+				_ = s.redis.PublishPaymentWarning(ctx, pkgredis.PaymentWarningMessage{
+					UserID:  order.UserID,
+					OrderID: order.ID,
+					EventID: order.EventID,
+					Type:    "two_min_warning",
+				})
+			}
+		}
+	}
 }
 
 func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, seats []model.SeatInfo, pricePerSeat int) (*model.Order, error) {

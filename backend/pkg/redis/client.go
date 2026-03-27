@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -128,4 +129,52 @@ func (c *Client) DecrSectionRemaining(ctx context.Context, eventID, sectionID st
 func (c *Client) IncrSectionRemaining(ctx context.Context, eventID, sectionID string, count int) error {
 	key := fmt.Sprintf("availability:%s:%s", eventID, sectionID)
 	return c.rdb.IncrBy(ctx, key, int64(count)).Err()
+}
+
+// Pub/Sub for real-time availability updates across pods
+const AvailabilityChannel = "availability_updates"
+
+type AvailabilityMessage struct {
+	EventID   string `json:"event_id"`
+	SectionID string `json:"section_id"`
+	Remaining int    `json:"remaining"`
+}
+
+func (c *Client) PublishAvailability(ctx context.Context, eventID, sectionID string, remaining int) error {
+	msg := AvailabilityMessage{
+		EventID:   eventID,
+		SectionID: sectionID,
+		Remaining: remaining,
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.rdb.Publish(ctx, AvailabilityChannel, data).Err()
+}
+
+func (c *Client) SubscribeAvailability(ctx context.Context) *goredis.PubSub {
+	return c.rdb.Subscribe(ctx, AvailabilityChannel)
+}
+
+// Pub/Sub for payment countdown warnings
+const PaymentWarningChannel = "payment_warnings"
+
+type PaymentWarningMessage struct {
+	UserID  string `json:"user_id"`
+	OrderID string `json:"order_id"`
+	EventID string `json:"event_id"`
+	Type    string `json:"type"` // "two_min_warning"
+}
+
+func (c *Client) PublishPaymentWarning(ctx context.Context, msg PaymentWarningMessage) error {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.rdb.Publish(ctx, PaymentWarningChannel, data).Err()
+}
+
+func (c *Client) SubscribePaymentWarning(ctx context.Context) *goredis.PubSub {
+	return c.rdb.Subscribe(ctx, PaymentWarningChannel)
 }

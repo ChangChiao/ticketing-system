@@ -1,13 +1,16 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	pkgredis "github.com/ticketing-system/backend/pkg/redis"
 )
 
 var upgrader = websocket.Upgrader{
@@ -152,6 +155,55 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump()
 	go client.readPump()
+}
+
+// SubscribeRedis listens to Redis Pub/Sub channels and bridges messages to WebSocket rooms.
+func (h *Hub) SubscribeRedis(redisClient *pkgredis.Client) {
+	ctx := context.Background()
+
+	// Availability updates
+	go func() {
+		sub := redisClient.SubscribeAvailability(ctx)
+		defer sub.Close()
+		ch := sub.Channel()
+		for msg := range ch {
+			var update pkgredis.AvailabilityMessage
+			if err := json.Unmarshal([]byte(msg.Payload), &update); err != nil {
+				log.Printf("ws: failed to unmarshal availability update: %v", err)
+				continue
+			}
+			room := fmt.Sprintf("availability:%s", update.EventID)
+			h.BroadcastToRoom(room, Message{
+				Type: "availability_update",
+				Data: AvailabilityUpdate{
+					SectionID: update.SectionID,
+					Remaining: update.Remaining,
+				},
+			})
+		}
+	}()
+
+	// Payment countdown warnings
+	go func() {
+		sub := redisClient.SubscribePaymentWarning(ctx)
+		defer sub.Close()
+		ch := sub.Channel()
+		for msg := range ch {
+			var warning pkgredis.PaymentWarningMessage
+			if err := json.Unmarshal([]byte(msg.Payload), &warning); err != nil {
+				log.Printf("ws: failed to unmarshal payment warning: %v", err)
+				continue
+			}
+			h.SendToUser(warning.UserID, Message{
+				Type: "payment_warning",
+				Data: map[string]string{
+					"order_id": warning.OrderID,
+					"type":     warning.Type,
+					"message":  "付款倒數剩餘 2 分鐘",
+				},
+			})
+		}
+	}()
 }
 
 func (c *Client) readPump() {

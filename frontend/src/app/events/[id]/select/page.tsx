@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, type EventDetail, type AllocatedSeats } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth";
 import VenueMap from "@/components/VenueMap";
 import Navbar from "@/components/Navbar";
 
@@ -18,6 +19,21 @@ export default function SelectPage() {
   const [allocating, setAllocating] = useState(false);
   const [error, setError] = useState("");
   const [timer, setTimer] = useState(600); // 10 min countdown
+  const wsRef = useRef<WebSocket | null>(null);
+  const user = useAuthStore((s) => s.user);
+
+  // Update section availability from WebSocket message
+  const handleAvailabilityUpdate = useCallback((sectionId: string, remaining: number) => {
+    setEvent((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        sections: prev.sections.map((s) =>
+          s.section_id === sectionId ? { ...s, remaining } : s
+        ),
+      };
+    });
+  }, []);
 
   useEffect(() => {
     api
@@ -26,6 +42,43 @@ export default function SelectPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [eventId]);
+
+  // WebSocket connection for real-time availability updates
+  useEffect(() => {
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws?event_id=${eventId}&user_id=${user?.id || ""}`;
+
+    const connect = () => {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "availability_update" && msg.data) {
+            handleAvailabilityUpdate(msg.data.section_id, msg.data.remaining);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      };
+
+      ws.onclose = () => {
+        // Reconnect after 3 seconds
+        setTimeout(() => {
+          if (wsRef.current === ws) connect();
+        }, 3000);
+      };
+    };
+
+    connect();
+
+    return () => {
+      const ws = wsRef.current;
+      wsRef.current = null;
+      ws?.close();
+    };
+  }, [eventId, user?.id, handleAvailabilityUpdate]);
 
   useEffect(() => {
     const interval = setInterval(() => {

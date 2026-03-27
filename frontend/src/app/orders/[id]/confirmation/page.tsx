@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { QRCodeSVG } from "qrcode.react";
 import { api, type Order, type OrderItem } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
@@ -104,13 +105,19 @@ export default function ConfirmationPage() {
           {/* Right - QR code */}
           {isConfirmed && (
             <div className="w-[180px] bg-[var(--bg-elevated)] flex flex-col items-center justify-center gap-3 p-5">
-              <div className="w-[120px] h-[120px] bg-white rounded-lg flex items-center justify-center">
-                <div className="w-[100px] h-[100px] bg-[var(--bg-page)] rounded flex items-center justify-center">
-                  <span className="font-mono text-[10px] text-[var(--text-secondary)] text-center">
-                    QR CODE<br />
-                    {order.id.slice(0, 8).toUpperCase()}
-                  </span>
-                </div>
+              <div className="bg-white rounded-lg p-2.5">
+                <QRCodeSVG
+                  value={JSON.stringify({
+                    order_id: order.id,
+                    seats: items.map((item) => ({
+                      section: item.section_name,
+                      row: item.row_label,
+                      seat: item.seat_number,
+                    })),
+                  })}
+                  size={100}
+                  level="M"
+                />
               </div>
               <span className="font-mono text-[9px] text-[var(--text-secondary)]">// scan_to_enter</span>
             </div>

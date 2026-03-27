@@ -68,6 +68,15 @@ func (s *SeatService) AllocateSeats(ctx context.Context, eventID, sectionID, use
 			}
 		}
 
+		// Publish availability update via Redis Pub/Sub
+		availability, _ := s.repo.GetAvailability(ctx, eventID)
+		for _, a := range availability {
+			if a.SectionID == sectionID {
+				_ = s.redis.PublishAvailability(ctx, eventID, sectionID, a.Remaining)
+				break
+			}
+		}
+
 		return &model.AllocatedSeats{
 			SessionID: sessionID,
 			Seats:     seatInfos,
@@ -82,11 +91,29 @@ func (s *SeatService) ReleaseSeatsByEvent(ctx context.Context, eventID string, s
 	if err := s.redis.UnlockSeats(ctx, eventID, seatIDs); err != nil {
 		return err
 	}
-	return s.repo.ReleaseSeats(ctx, eventID, seatIDs)
+	if err := s.repo.ReleaseSeats(ctx, eventID, seatIDs); err != nil {
+		return err
+	}
+
+	// Publish availability updates for affected sections
+	availability, _ := s.repo.GetAvailability(ctx, eventID)
+	for _, a := range availability {
+		_ = s.redis.PublishAvailability(ctx, eventID, a.SectionID, a.Remaining)
+	}
+	return nil
 }
 
 func (s *SeatService) ConfirmSeats(ctx context.Context, eventID string, seatIDs []string) error {
-	return s.repo.MarkSeatsAsSold(ctx, eventID, seatIDs)
+	if err := s.repo.MarkSeatsAsSold(ctx, eventID, seatIDs); err != nil {
+		return err
+	}
+
+	// Publish availability updates for affected sections
+	availability, _ := s.repo.GetAvailability(ctx, eventID)
+	for _, a := range availability {
+		_ = s.redis.PublishAvailability(ctx, eventID, a.SectionID, a.Remaining)
+	}
+	return nil
 }
 
 // AreSeatLocksExpired checks if any of the seat locks have expired in Redis.

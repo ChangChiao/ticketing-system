@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"time"
@@ -45,7 +46,7 @@ func main() {
 	// Services
 	eventSvc := service.NewEventService(eventRepo)
 	seatSvc := service.NewSeatService(seatRepo, redisClient)
-	orderSvc := service.NewOrderService(orderRepo, seatSvc)
+	orderSvc := service.NewOrderService(orderRepo, seatSvc, redisClient)
 	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 	queueSvc := service.NewQueueService(redisClient)
 
@@ -55,6 +56,10 @@ func main() {
 	// WebSocket Hub
 	wsHub := ws.NewHub()
 	go wsHub.Run()
+	wsHub.SubscribeRedis(redisClient)
+
+	// Start payment warning worker (10.3)
+	go orderSvc.StartPaymentWarningWorker(context.Background())
 
 	// Handlers
 	eventHandler := handler.NewEventHandler(eventSvc)
