@@ -59,15 +59,21 @@ export default function CheckoutPage() {
     setError("");
 
     try {
-      const order = await api.createOrder({
+      const result = await api.createOrder({
         event_id: allocation.event_id,
         seats: allocation.seats,
         price_per_seat: allocation.price_per_seat,
       });
 
-      sessionStorage.setItem("pending_order_id", order.id);
+      sessionStorage.setItem("pending_order_id", result.id);
       sessionStorage.removeItem("allocation");
-      router.push(`/events/${eventId}/payment`);
+
+      // Redirect to LINE Pay payment page
+      if (result.payment_url) {
+        window.location.href = result.payment_url;
+      } else {
+        router.push(`/events/${eventId}/payment`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "建立訂單失敗");
     } finally {

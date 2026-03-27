@@ -63,7 +63,7 @@ export const api = {
     seats: SeatInfo[];
     price_per_seat: number;
   }) =>
-    fetchAPI<Order>("/orders", {
+    fetchAPI<CreateOrderResponse>("/orders", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -131,6 +131,14 @@ export interface SeatInfo {
   section_name: string;
   row_label: string;
   seat_number: number;
+}
+
+export interface CreateOrderResponse {
+  id: string;
+  status: string;
+  total: number;
+  payment_url: string;
+  transaction_id: number;
 }
 
 export interface Order {
