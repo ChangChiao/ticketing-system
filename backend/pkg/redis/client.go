@@ -178,3 +178,32 @@ func (c *Client) PublishPaymentWarning(ctx context.Context, msg PaymentWarningMe
 func (c *Client) SubscribePaymentWarning(ctx context.Context) *goredis.PubSub {
 	return c.rdb.Subscribe(ctx, PaymentWarningChannel)
 }
+
+// Rate limiting with fixed-window counter (atomic via Lua script)
+var rateLimitScript = goredis.NewScript(`
+	local key = KEYS[1]
+	local max = tonumber(ARGV[1])
+	local window = tonumber(ARGV[2])
+	local current = redis.call('INCR', key)
+	if current == 1 then
+		redis.call('EXPIRE', key, window)
+	end
+	if current > max then
+		return 0
+	end
+	return 1
+`)
+
+// CheckRateLimit returns true if the request is allowed, false if rate limited.
+// key: unique identifier (e.g. "rl:ip:1.2.3.4"), maxRequests: max count in window, window: time window duration.
+func (c *Client) CheckRateLimit(ctx context.Context, key string, maxRequests int, window time.Duration) (bool, error) {
+	windowSec := int(window.Seconds())
+	if windowSec < 1 {
+		windowSec = 1
+	}
+	result, err := rateLimitScript.Run(ctx, c.rdb, []string{key}, maxRequests, windowSec).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}

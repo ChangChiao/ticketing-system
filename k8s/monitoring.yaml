@@ -1,0 +1,232 @@
+## Prometheus ServiceMonitor (requires prometheus-operator CRD)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ticketing-api-monitor
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: ticketing-api
+  endpoints:
+    - port: "8080"
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ticketing-ws-monitor
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: ticketing-ws
+  endpoints:
+    - port: "8080"
+      path: /metrics
+      interval: 15s
+---
+## Prometheus alerting rules
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ticketing-alerts
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: ticketing.rules
+      rules:
+        - alert: HighErrorRate
+          expr: rate(ticketing_errors_total[5m]) > 0.5
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High error rate detected"
+            description: "Error rate is {{ $value }}/s for {{ $labels.type }}"
+
+        - alert: QueueDepthHigh
+          expr: ticketing_queue_depth > 5000
+          for: 1m
+          labels:
+            severity: info
+          annotations:
+            summary: "Queue depth exceeds 5000"
+            description: "Event {{ $labels.event_id }} has {{ $value }} users in queue"
+
+        - alert: SeatAllocationSlow
+          expr: histogram_quantile(0.95, rate(ticketing_seat_allocation_duration_seconds_bucket[5m])) > 5
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Seat allocation p95 exceeds 5s"
+
+        - alert: PaymentTimeoutRate
+          expr: rate(ticketing_payments_total{status="timeout"}[5m]) / rate(ticketing_payments_total[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Payment timeout rate exceeds 10%"
+
+        - alert: HighAPILatency
+          expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: "API p95 latency exceeds 2 seconds"
+
+        - alert: WebSocketConnectionsDrop
+          expr: delta(ticketing_websocket_connections_active[5m]) < -100
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "WebSocket connections dropped by {{ $value }} in 5 minutes"
+---
+## Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ticketing-grafana-dashboard
+  labels:
+    grafana_dashboard: "true"
+data:
+  ticketing-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "TICKETPULSE - Concert Ticketing System",
+        "uid": "ticketing-main",
+        "timezone": "Asia/Taipei",
+        "refresh": "5s",
+        "panels": [
+          {
+            "title": "Queue Depth by Event",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+            "targets": [
+              {
+                "expr": "ticketing_queue_depth",
+                "legendFormat": "Event: {{event_id}}"
+              }
+            ]
+          },
+          {
+            "title": "Ticket Sales Rate (per minute)",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+            "targets": [
+              {
+                "expr": "rate(ticketing_ticket_sales_rate[1m]) * 60",
+                "legendFormat": "Event: {{event_id}}"
+              }
+            ]
+          },
+          {
+            "title": "HTTP Request Rate",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total[1m])) by (method, path)",
+                "legendFormat": "{{method}} {{path}}"
+              }
+            ]
+          },
+          {
+            "title": "API Latency (p50 / p95 / p99)",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "p50"
+              },
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "p95"
+              },
+              {
+                "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "p99"
+              }
+            ]
+          },
+          {
+            "title": "Seat Allocation Results",
+            "type": "piechart",
+            "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+            "targets": [
+              {
+                "expr": "sum(increase(ticketing_seat_allocation_attempts_total[5m])) by (result)",
+                "legendFormat": "{{result}}"
+              }
+            ]
+          },
+          {
+            "title": "Seat Allocation Latency (p95)",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(ticketing_seat_allocation_duration_seconds_bucket[5m]))",
+                "legendFormat": "p95"
+              }
+            ]
+          },
+          {
+            "title": "Payment Status",
+            "type": "stat",
+            "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+            "targets": [
+              {
+                "expr": "increase(ticketing_payments_total[1h])",
+                "legendFormat": "{{status}}"
+              }
+            ]
+          },
+          {
+            "title": "Active WebSocket Connections",
+            "type": "gauge",
+            "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+            "targets": [
+              {
+                "expr": "ticketing_websocket_connections_active"
+              }
+            ]
+          },
+          {
+            "title": "Error Rate by Type",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 16, "x": 8, "y": 24 },
+            "targets": [
+              {
+                "expr": "rate(ticketing_errors_total[5m])",
+                "legendFormat": "{{type}}"
+              }
+            ]
+          },
+          {
+            "title": "HTTP Error Rate (4xx / 5xx)",
+            "type": "timeseries",
+            "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{status=~\"4..\"}[5m]))",
+                "legendFormat": "4xx"
+              },
+              {
+                "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m]))",
+                "legendFormat": "5xx"
+              }
+            ]
+          }
+        ]
+      }
+    }

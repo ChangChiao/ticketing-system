@@ -1,15 +1,17 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	pkgredis "github.com/ticketing-system/backend/pkg/redis"
 )
 
-// DeviceFingerprintLimit limits queue entries per device fingerprint.
+// DeviceFingerprintLimit limits queue entries per device fingerprint using Redis.
 // The fingerprint is sent via X-Device-Fingerprint header from the frontend.
-func DeviceFingerprintLimit(maxEntries int, window time.Duration) gin.HandlerFunc {
+func DeviceFingerprintLimit(redisClient *pkgredis.Client, maxEntries int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		fingerprint := c.GetHeader("X-Device-Fingerprint")
 		if fingerprint == "" {
@@ -18,31 +20,21 @@ func DeviceFingerprintLimit(maxEntries int, window time.Duration) gin.HandlerFun
 			return
 		}
 
-		key := "fp:" + fingerprint
+		key := "rl:fp:" + fingerprint
 
-		limiter.mu.Lock()
-		now := time.Now()
-		windowStart := now.Add(-window)
-
-		reqs := limiter.requests[key]
-		cleaned := make([]time.Time, 0, len(reqs))
-		for _, t := range reqs {
-			if t.After(windowStart) {
-				cleaned = append(cleaned, t)
-			}
+		allowed, err := redisClient.CheckRateLimit(c.Request.Context(), key, maxEntries, window)
+		if err != nil {
+			log.Printf("fingerprint rate limit redis error: %v", err)
+			c.Next()
+			return
 		}
 
-		if len(cleaned) >= maxEntries {
-			limiter.mu.Unlock()
+		if !allowed {
 			c.Header("Retry-After", "60")
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "同一裝置操作過於頻繁，請稍後再試"})
 			c.Abort()
 			return
 		}
-
-		cleaned = append(cleaned, now)
-		limiter.requests[key] = cleaned
-		limiter.mu.Unlock()
 
 		c.Next()
 	}

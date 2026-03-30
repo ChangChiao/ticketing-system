@@ -101,9 +101,9 @@
 
 ## 13. Deployment & Infrastructure
 
-- [ ] 13.1 Create Dockerfiles for Go API, WebSocket server, and Next.js frontend
-- [ ] 13.2 Create Kubernetes manifests: Deployments, Services, Ingress for all components
-- [ ] 13.3 Configure HPA (Horizontal Pod Autoscaler) for API and WebSocket pods
-- [ ] 13.4 Set up Cloudflare CDN for static assets and DDoS protection
-- [ ] 13.5 Create pre-scaling CronJob for scheduled event sale starts
-- [ ] 13.6 Set up monitoring: Prometheus metrics, Grafana dashboards (queue depth, ticket sales rate, error rate)
+- [x] 13.1 Create Dockerfiles for Go API, WebSocket server, and Next.js frontend
+- [x] 13.2 Create Kubernetes manifests: Deployments, Services, Ingress for all components
+- [x] 13.3 Configure HPA (Horizontal Pod Autoscaler) for API and WebSocket pods
+- [x] 13.4 Set up Cloudflare CDN for static assets and DDoS protection
+- [x] 13.5 Create pre-scaling CronJob for scheduled event sale starts
+- [x] 13.6 Set up monitoring: Prometheus metrics, Grafana dashboards (queue depth, ticket sales rate, error rate)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/ticketing-system/backend/internal/config"
 	"github.com/ticketing-system/backend/internal/handler"
 	"github.com/ticketing-system/backend/internal/middleware"
@@ -70,8 +71,12 @@ func main() {
 
 	// Router
 	r := gin.Default()
+	r.Use(middleware.PrometheusMetrics())
 	r.Use(middleware.CORS(cfg.AppBaseURL))
-	r.Use(middleware.IPRateLimit(30, time.Minute)) // 30 req/min for unauthenticated
+	r.Use(middleware.IPRateLimit(redisClient, 30, time.Minute)) // 30 req/min for unauthenticated
+
+	// Prometheus metrics endpoint
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	api := r.Group("/api")
 	{
@@ -89,14 +94,14 @@ func main() {
 		// Protected routes
 		protected := api.Group("")
 		protected.Use(middleware.Auth(cfg.JWTSecret))
-		protected.Use(middleware.RateLimit(100, time.Minute))           // 100 req/min per user
+		protected.Use(middleware.RateLimit(redisClient, 100, time.Minute))           // 100 req/min per user
 		protected.Use(middleware.RequestSignature(cfg.RequestSignSecret)) // Request signature validation
 		{
 			// Queue join: CAPTCHA + device fingerprint + IP queue rate limit
 			protected.POST("/events/:id/queue/join",
 				middleware.CaptchaVerify(cfg.TurnstileSecretKey),
-				middleware.DeviceFingerprintLimit(3, time.Minute),     // 3 queue entries per device
-				middleware.IPRateLimit(5, time.Minute),                // 5 queue entries/min per IP
+				middleware.DeviceFingerprintLimit(redisClient, 3, time.Minute),     // 3 queue entries per device
+				middleware.IPRateLimit(redisClient, 5, time.Minute),                // 5 queue entries/min per IP
 				queueHandler.JoinQueue,
 			)
 			protected.GET("/events/:id/queue/position", queueHandler.GetPosition)

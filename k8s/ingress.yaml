@@ -3,10 +3,32 @@ kind: Ingress
 metadata:
   name: ticketing-ingress
   annotations:
+    # Nginx Ingress controller
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/websocket-services: "ticketing-ws"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    # Enable gzip compression
+    nginx.ingress.kubernetes.io/enable-gzip: "true"
+    nginx.ingress.kubernetes.io/gzip-types: "application/json application/javascript text/css text/html"
+    # CORS for Cloudflare
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    # Static asset caching headers (Cloudflare will respect these)
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2|woff|ttf)$ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        add_header X-Content-Type-Options "nosniff";
+      }
+    # TLS via Cloudflare (cert-manager or Cloudflare Origin cert)
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - tickets.example.com
+      secretName: ticketing-tls
   rules:
     - host: tickets.example.com
       http:
@@ -32,3 +54,43 @@ spec:
                 name: ticketing-frontend
                 port:
                   number: 3000
+---
+# Cloudflare CDN & DDoS protection configuration reference
+# Apply these settings in Cloudflare Dashboard or via Cloudflare API:
+#
+# 1. DNS: Proxy enabled (orange cloud) for tickets.example.com
+#
+# 2. SSL/TLS: Full (Strict) mode with Origin CA certificate
+#
+# 3. Caching:
+#    - Browser Cache TTL: Respect Existing Headers
+#    - Edge Cache TTL: 2 hours for static assets
+#    - Cache Level: Standard
+#    - Cache Rules:
+#      - Match: URI path starts with /_next/static/ → Cache Everything, Edge TTL 30 days
+#      - Match: URI path starts with /api/ → Bypass Cache
+#      - Match: URI path starts with /ws → Bypass Cache
+#
+# 4. Page Rules:
+#    - tickets.example.com/_next/static/* → Cache Level: Cache Everything, Edge TTL: 1 month
+#    - tickets.example.com/api/* → Cache Level: Bypass, Disable Performance
+#
+# 5. Security:
+#    - WAF: Managed ruleset enabled
+#    - DDoS Protection: Enabled (automatic)
+#    - Bot Fight Mode: On
+#    - Rate Limiting Rules:
+#      - /api/events/*/queue/join: 5 requests per 10 seconds per IP
+#      - /api/auth/*: 10 requests per minute per IP
+#    - Under Attack Mode: Toggle on during ticket sale events
+#
+# 6. Network:
+#    - WebSocket: Enabled
+#    - HTTP/2: Enabled
+#    - HTTP/3 (QUIC): Enabled
+#    - Minimum TLS Version: 1.2
+#
+# 7. Speed:
+#    - Auto Minify: JS, CSS, HTML
+#    - Brotli: Enabled
+#    - Early Hints: Enabled
