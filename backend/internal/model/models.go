@@ -73,13 +73,14 @@ type User struct {
 }
 
 type Order struct {
-	ID        string    `db:"id" json:"id"`
-	UserID    string    `db:"user_id" json:"user_id"`
-	EventID   string    `db:"event_id" json:"event_id"`
-	Status    string    `db:"status" json:"status"` // pending, confirmed, cancelled, payment_pending
-	Total     int       `db:"total" json:"total"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+	ID            string    `db:"id" json:"id"`
+	UserID        string    `db:"user_id" json:"user_id"`
+	EventID       string    `db:"event_id" json:"event_id"`
+	Status        string    `db:"status" json:"status"` // pending, confirmed, cancelled, payment_pending
+	Total         int       `db:"total" json:"total"`
+	CallbackToken string    `db:"callback_token" json:"-"` // not exposed in API responses
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type OrderItem struct {

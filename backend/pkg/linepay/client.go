@@ -33,11 +33,12 @@ func NewClient(channelID, channelSecret, baseURL, appBaseURL string) *Client {
 }
 
 type RequestPaymentInput struct {
-	OrderID     string
-	Amount      int
-	ProductName string
-	Quantity    int
-	Price       int
+	OrderID       string
+	Amount        int
+	ProductName   string
+	Quantity      int
+	Price         int
+	CallbackToken string
 }
 
 type RequestPaymentOutput struct {
@@ -65,8 +66,8 @@ func (c *Client) RequestPayment(input RequestPaymentInput) (*RequestPaymentOutpu
 			},
 		},
 		"redirectUrls": map[string]string{
-			"confirmUrl": fmt.Sprintf("%s/api/payments/confirm?orderId=%s", c.appBaseURL, input.OrderID),
-			"cancelUrl":  fmt.Sprintf("%s/api/payments/cancel?orderId=%s", c.appBaseURL, input.OrderID),
+			"confirmUrl": fmt.Sprintf("%s/api/payments/confirm?orderId=%s&token=%s", c.appBaseURL, input.OrderID, input.CallbackToken),
+			"cancelUrl":  fmt.Sprintf("%s/api/payments/cancel?orderId=%s&token=%s", c.appBaseURL, input.OrderID, input.CallbackToken),
 		},
 	}
 

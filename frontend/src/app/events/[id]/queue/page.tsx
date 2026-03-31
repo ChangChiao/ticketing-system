@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { useAuthStore } from "@/stores/auth";
-import { generateFingerprint, signRequest } from "@/lib/security";
+import { generateFingerprint } from "@/lib/security";
 import Navbar from "@/components/Navbar";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
@@ -33,19 +33,15 @@ export default function QueuePage() {
 
     try {
       const fingerprint = generateFingerprint();
-      const path = `/api/events/${eventId}/queue/join`;
-      const timestamp = Date.now().toString();
-      const signature = await signRequest("POST", path, timestamp);
 
-      const res = await fetch(path, {
+      // Request goes through BFF proxy which adds HMAC signature server-side
+      const res = await fetch(`/api/protected/events/${eventId}/queue/join`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
           "X-Captcha-Token": captcha,
           "X-Device-Fingerprint": fingerprint,
-          "X-Request-Signature": signature,
-          "X-Request-Timestamp": timestamp,
         },
       });
       const data = await res.json();

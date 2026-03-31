@@ -40,11 +40,12 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 
 	// Call LINE Pay Request API to get payment URL
 	paymentOutput, err := h.linePayCli.RequestPayment(linepay.RequestPaymentInput{
-		OrderID:     order.ID,
-		Amount:      order.Total,
-		ProductName: "演唱會門票",
-		Quantity:    len(req.Seats),
-		Price:       req.PricePerSeat,
+		OrderID:       order.ID,
+		Amount:        order.Total,
+		ProductName:   "演唱會門票",
+		Quantity:      len(req.Seats),
+		Price:         req.PricePerSeat,
+		CallbackToken: order.CallbackToken,
 	})
 	if err != nil {
 		log.Printf("LINE Pay request failed for order %s: %v", order.ID, err)
@@ -86,13 +87,38 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 	transactionID := c.Query("transactionId")
 	orderID := c.Query("orderId")
+	callbackToken := c.Query("token")
 
-	if transactionID == "" || orderID == "" {
+	if transactionID == "" || orderID == "" || callbackToken == "" {
 		c.Redirect(http.StatusFound, "/orders?error=missing_params")
 		return
 	}
 
-	// Check if seat locks have expired (task 8.5)
+	// Validate callback token
+	valid, err := h.svc.ValidateCallbackToken(c.Request.Context(), orderID, callbackToken)
+	if err != nil {
+		log.Printf("Failed to validate callback token for order %s: %v", orderID, err)
+		c.Redirect(http.StatusFound, "/orders?error=validation_failed")
+		return
+	}
+	if !valid {
+		log.Printf("Invalid callback token for order %s", orderID)
+		c.JSON(http.StatusForbidden, gin.H{"error": "無效的回調驗證"})
+		return
+	}
+
+	// Idempotency: if order is already confirmed, redirect to success
+	order, _, err := h.svc.GetOrder(c.Request.Context(), orderID)
+	if err != nil {
+		c.Redirect(http.StatusFound, "/orders?error=order_not_found")
+		return
+	}
+	if order.Status == "confirmed" {
+		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation")
+		return
+	}
+
+	// Check if seat locks have expired
 	expired, err := h.svc.AreSeatsExpired(c.Request.Context(), orderID)
 	if err != nil {
 		log.Printf("Failed to check seat lock expiry for order %s: %v", orderID, err)
@@ -106,13 +132,7 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 		return
 	}
 
-	// Call LINE Pay Confirm API with retry and exponential backoff (task 8.6)
-	order, _, err := h.svc.GetOrder(c.Request.Context(), orderID)
-	if err != nil {
-		c.Redirect(http.StatusFound, "/orders?error=order_not_found")
-		return
-	}
-
+	// Call LINE Pay Confirm API with retry and exponential backoff
 	err = h.linePayCli.ConfirmPaymentWithRetry(linepay.ConfirmPaymentInput{
 		TransactionID: transactionID,
 		Amount:        order.Total,
@@ -136,7 +156,16 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 
 func (h *OrderHandler) CancelPayment(c *gin.Context) {
 	orderID := c.Query("orderId")
-	if orderID == "" {
+	callbackToken := c.Query("token")
+	if orderID == "" || callbackToken == "" {
+		c.Redirect(http.StatusFound, "/events")
+		return
+	}
+
+	// Validate callback token
+	valid, err := h.svc.ValidateCallbackToken(c.Request.Context(), orderID, callbackToken)
+	if err != nil || !valid {
+		log.Printf("Invalid callback token on cancel for order %s", orderID)
 		c.Redirect(http.StatusFound, "/events")
 		return
 	}

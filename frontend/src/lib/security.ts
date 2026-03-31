@@ -1,5 +1,3 @@
-const REQUEST_SIGN_SECRET = process.env.NEXT_PUBLIC_REQUEST_SIGN_SECRET || "";
-
 /**
  * Generate a simple device fingerprint based on browser properties.
  * This is a lightweight approach — for production, consider FingerprintJS.
@@ -25,30 +23,4 @@ export function generateFingerprint(): string {
     hash = ((hash << 5) - hash + char) | 0;
   }
   return Math.abs(hash).toString(36);
-}
-
-/**
- * Generate HMAC-SHA256 request signature.
- * Signs: method + path + timestamp
- */
-export async function signRequest(
-  method: string,
-  path: string,
-  timestamp: string
-): Promise<string> {
-  if (!REQUEST_SIGN_SECRET) return "";
-
-  const message = method + path + timestamp;
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(REQUEST_SIGN_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }

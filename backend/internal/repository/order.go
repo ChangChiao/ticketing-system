@@ -23,8 +23,8 @@ func (r *OrderRepository) Create(ctx context.Context, order *model.Order, items 
 	defer tx.Rollback()
 
 	_, err = tx.NamedExecContext(ctx, `
-		INSERT INTO orders (id, user_id, event_id, status, total, created_at, updated_at)
-		VALUES (:id, :user_id, :event_id, :status, :total, :created_at, :updated_at)
+		INSERT INTO orders (id, user_id, event_id, status, total, callback_token, created_at, updated_at)
+		VALUES (:id, :user_id, :event_id, :status, :total, :callback_token, :created_at, :updated_at)
 	`, order)
 	if err != nil {
 		return err
@@ -79,6 +79,14 @@ func (r *OrderRepository) UpdatePaymentStatus(ctx context.Context, orderID, stat
 		UPDATE payments SET status = $1, confirmed_at = NOW() WHERE order_id = $2
 	`, status, orderID)
 	return err
+}
+
+// ValidateCallbackToken checks if the given token matches the order's callback_token.
+func (r *OrderRepository) ValidateCallbackToken(ctx context.Context, orderID, token string) (bool, error) {
+	var count int
+	err := r.db.GetContext(ctx, &count,
+		"SELECT COUNT(*) FROM orders WHERE id = $1 AND callback_token = $2", orderID, token)
+	return count > 0, err
 }
 
 // GetPendingOrdersNearExpiry returns pending orders created between 7.5 and 8.5 minutes ago (the 2-minute warning window).

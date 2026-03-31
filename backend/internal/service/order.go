@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"log"
 	"time"
 
@@ -49,16 +51,31 @@ func (s *OrderService) StartPaymentWarningWorker(ctx context.Context) {
 	}
 }
 
+// generateCallbackToken creates a cryptographically random 32-byte hex token.
+func generateCallbackToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
 func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, seats []model.SeatInfo, pricePerSeat int) (*model.Order, error) {
+	callbackToken, err := generateCallbackToken()
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 	order := &model.Order{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		EventID:   eventID,
-		Status:    "pending",
-		Total:     pricePerSeat * len(seats),
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:            uuid.New().String(),
+		UserID:        userID,
+		EventID:       eventID,
+		Status:        "pending",
+		Total:         pricePerSeat * len(seats),
+		CallbackToken: callbackToken,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
 	items := make([]model.OrderItem, len(seats))
@@ -154,6 +171,11 @@ func (s *OrderService) AreSeatsExpired(ctx context.Context, orderID string) (boo
 // MarkPaymentPending sets order status to payment_pending for manual review.
 func (s *OrderService) MarkPaymentPending(ctx context.Context, orderID string) error {
 	return s.repo.UpdateStatus(ctx, orderID, "payment_pending")
+}
+
+// ValidateCallbackToken verifies that the provided token matches the order's stored callback_token.
+func (s *OrderService) ValidateCallbackToken(ctx context.Context, orderID, token string) (bool, error) {
+	return s.repo.ValidateCallbackToken(ctx, orderID, token)
 }
 
 func (s *OrderService) CancelOrder(ctx context.Context, orderID string) error {

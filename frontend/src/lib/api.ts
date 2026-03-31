@@ -1,4 +1,5 @@
 const API_BASE = "/api";
+const PROTECTED_API_BASE = "/api/protected";
 
 async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   const token =
@@ -14,6 +15,36 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `API Error: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Fetch wrapper for protected endpoints.
+ * Routes through the BFF proxy which adds server-side HMAC signing.
+ */
+async function fetchProtectedAPI<T>(path: string, options?: RequestInit): Promise<T> {
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options?.headers as Record<string, string>),
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${PROTECTED_API_BASE}${path}`, {
     ...options,
     headers,
   });
@@ -47,29 +78,29 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  // Seats
+  // Seats (protected — routed through BFF proxy)
   allocateSeats: (
     eventId: string,
     data: { section_id: string; quantity: number }
   ) =>
-    fetchAPI<AllocatedSeats>(`/events/${eventId}/allocate`, {
+    fetchProtectedAPI<AllocatedSeats>(`/events/${eventId}/allocate`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  // Orders
+  // Orders (protected — routed through BFF proxy)
   createOrder: (data: {
     event_id: string;
     seats: SeatInfo[];
     price_per_seat: number;
   }) =>
-    fetchAPI<CreateOrderResponse>("/orders", {
+    fetchProtectedAPI<CreateOrderResponse>("/orders", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  listOrders: () => fetchAPI<{ orders: Order[] }>("/orders"),
+  listOrders: () => fetchProtectedAPI<{ orders: Order[] }>("/orders"),
   getOrder: (id: string) =>
-    fetchAPI<{ order: Order; items: OrderItem[] }>(`/orders/${id}`),
+    fetchProtectedAPI<{ order: Order; items: OrderItem[] }>(`/orders/${id}`),
 };
 
 // Types
