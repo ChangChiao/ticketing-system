@@ -65,6 +65,26 @@ func (c *Client) IsSeatLocked(ctx context.Context, eventID, seatID string) (bool
 	return result > 0, nil
 }
 
+// AreSeatsLocked checks lock status for multiple seats in a single Redis pipeline call.
+// Returns a slice of booleans in the same order as seatIDs.
+func (c *Client) AreSeatsLocked(ctx context.Context, eventID string, seatIDs []string) ([]bool, error) {
+	pipe := c.rdb.Pipeline()
+	cmds := make([]*goredis.IntCmd, len(seatIDs))
+	for i, seatID := range seatIDs {
+		key := fmt.Sprintf("seat_lock:%s:%s", eventID, seatID)
+		cmds[i] = pipe.Exists(ctx, key)
+	}
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]bool, len(seatIDs))
+	for i, cmd := range cmds {
+		results[i] = cmd.Val() > 0
+	}
+	return results, nil
+}
+
 // Queue operations
 func (c *Client) QueueJoin(ctx context.Context, eventID, userToken string) error {
 	key := fmt.Sprintf("queue:%s", eventID)

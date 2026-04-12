@@ -118,12 +118,12 @@ func (s *SeatService) ConfirmSeats(ctx context.Context, eventID string, seatIDs 
 
 // AreSeatLocksExpired checks if any of the seat locks have expired in Redis.
 func (s *SeatService) AreSeatLocksExpired(ctx context.Context, eventID string, seatIDs []string) (bool, error) {
-	for _, seatID := range seatIDs {
-		locked, err := s.redis.IsSeatLocked(ctx, eventID, seatID)
-		if err != nil {
-			return false, err
-		}
-		if !locked {
+	locked, err := s.redis.AreSeatsLocked(ctx, eventID, seatIDs)
+	if err != nil {
+		return false, err
+	}
+	for _, isLocked := range locked {
+		if !isLocked {
 			return true, nil
 		}
 	}
@@ -165,14 +165,18 @@ func (s *SeatService) findConsecutiveSeats(ctx context.Context, eventID, section
 			return seats[i].Number < seats[j].Number
 		})
 
-		// Check for locks in Redis
+		// Batch check locks in Redis via pipeline
+		seatIDs := make([]string, len(seats))
+		for i, seat := range seats {
+			seatIDs[i] = seat.SeatID
+		}
+		locked, err := s.redis.AreSeatsLocked(ctx, eventID, seatIDs)
+		if err != nil {
+			return nil, err
+		}
 		availableSeats := make([]repository.RowWithSeats, 0, len(seats))
-		for _, seat := range seats {
-			locked, err := s.redis.IsSeatLocked(ctx, eventID, seat.SeatID)
-			if err != nil {
-				return nil, err
-			}
-			if !locked {
+		for i, seat := range seats {
+			if !locked[i] {
 				availableSeats = append(availableSeats, seat)
 			}
 		}
