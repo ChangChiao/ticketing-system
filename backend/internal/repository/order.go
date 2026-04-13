@@ -81,6 +81,44 @@ func (r *OrderRepository) UpdatePaymentStatus(ctx context.Context, orderID, stat
 	return err
 }
 
+// ConfirmOrderTx marks seats as sold, creates a payment record, and updates order status in a single transaction.
+func (r *OrderRepository) ConfirmOrderTx(ctx context.Context, orderID, eventID string, seatIDs []string, payment *model.Payment) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Mark seats as sold
+	_, err = tx.ExecContext(ctx, `
+		UPDATE event_seats SET status = 'sold'
+		WHERE event_id = $1 AND seat_id = ANY($2)
+	`, eventID, seatIDs)
+	if err != nil {
+		return err
+	}
+
+	// Create payment record
+	_, err = tx.NamedExecContext(ctx, `
+		INSERT INTO payments (id, order_id, transaction_id, method, amount, status, created_at)
+		VALUES (:id, :order_id, :transaction_id, :method, :amount, :status, :created_at)
+	`, payment)
+	if err != nil {
+		return err
+	}
+
+	// Update order status
+	_, err = tx.ExecContext(ctx, `
+		UPDATE orders SET status = 'confirmed', updated_at = NOW()
+		WHERE id = $1
+	`, orderID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 // ValidateCallbackToken checks if the given token matches the order's callback_token.
 func (r *OrderRepository) ValidateCallbackToken(ctx context.Context, orderID, token string) (bool, error) {
 	var count int

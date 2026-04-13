@@ -116,6 +116,14 @@ func (s *SeatService) ConfirmSeats(ctx context.Context, eventID string, seatIDs 
 	return nil
 }
 
+// PublishAvailabilityUpdate fetches current availability and publishes updates via Redis Pub/Sub.
+func (s *SeatService) PublishAvailabilityUpdate(ctx context.Context, eventID string) {
+	availability, _ := s.repo.GetAvailability(ctx, eventID)
+	for _, a := range availability {
+		_ = s.redis.PublishAvailability(ctx, eventID, a.SectionID, a.Remaining)
+	}
+}
+
 // AreSeatLocksExpired checks if any of the seat locks have expired in Redis.
 func (s *SeatService) AreSeatLocksExpired(ctx context.Context, eventID string, seatIDs []string) (bool, error) {
 	locked, err := s.redis.AreSeatsLocked(ctx, eventID, seatIDs)

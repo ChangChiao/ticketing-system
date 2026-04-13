@@ -125,16 +125,11 @@ func (s *OrderService) ConfirmOrder(ctx context.Context, orderID, transactionID 
 		return err
 	}
 
-	// Mark seats as sold
 	seatIDs := make([]string, len(items))
 	for i, item := range items {
 		seatIDs[i] = item.EventSeatID
 	}
-	if err := s.seatSvc.ConfirmSeats(ctx, order.EventID, seatIDs); err != nil {
-		return err
-	}
 
-	// Create payment record
 	payment := &model.Payment{
 		ID:            uuid.New().String(),
 		OrderID:       orderID,
@@ -144,11 +139,16 @@ func (s *OrderService) ConfirmOrder(ctx context.Context, orderID, transactionID 
 		Status:        "confirmed",
 		CreatedAt:     time.Now(),
 	}
-	if err := s.repo.CreatePayment(ctx, payment); err != nil {
+
+	// All DB writes in a single transaction: mark seats sold + create payment + update order
+	if err := s.repo.ConfirmOrderTx(ctx, orderID, order.EventID, seatIDs, payment); err != nil {
 		return err
 	}
 
-	return s.repo.UpdateStatus(ctx, orderID, "confirmed")
+	// Publish availability updates via Redis (after successful commit)
+	s.seatSvc.PublishAvailabilityUpdate(ctx, order.EventID)
+
+	return nil
 }
 
 // AreSeatsExpired checks if seat locks for an order have expired.
