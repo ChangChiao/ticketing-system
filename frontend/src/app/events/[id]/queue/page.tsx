@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { useAuthStore } from "@/stores/auth";
 import { generateFingerprint } from "@/lib/security";
+import { getWebSocketBaseURL } from "@/lib/ws";
 import Navbar from "@/components/Navbar";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
@@ -78,7 +79,7 @@ export default function QueuePage() {
   useEffect(() => {
     if (status !== "waiting" || !user) return;
 
-    const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080";
+    const wsBase = getWebSocketBaseURL();
     const wsUrl = `${wsBase}/ws?user_id=${user.id}&event_id=${eventId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;

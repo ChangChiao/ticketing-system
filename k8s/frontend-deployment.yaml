@@ -19,6 +19,14 @@ spec:
           image: ticketing-frontend:latest
           ports:
             - containerPort: 3000
+          env:
+            - name: BACKEND_URL
+              value: http://ticketing-api:8080
+            - name: REQUEST_SIGN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ticketing-secrets
+                  key: request-sign-secret
           resources:
             requests:
               cpu: "100m"

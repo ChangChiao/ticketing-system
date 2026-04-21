@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, type EventDetail, type AllocatedSeats } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
+import { getWebSocketBaseURL } from "@/lib/ws";
 import VenueMap from "@/components/VenueMap";
 import Navbar from "@/components/Navbar";
 
@@ -45,8 +46,8 @@ export default function SelectPage() {
 
   // WebSocket connection for real-time availability updates
   useEffect(() => {
-    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws?event_id=${eventId}&user_id=${user?.id || ""}`;
+    const wsBase = getWebSocketBaseURL();
+    const wsUrl = `${wsBase}/ws?event_id=${eventId}&user_id=${user?.id || ""}`;
 
     const connect = () => {
       const ws = new WebSocket(wsUrl);
