@@ -28,9 +28,11 @@ func (h *QueueHandler) JoinQueue(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "加入排隊失敗"})
 		return
 	}
+	total, _ := h.svc.QueueSize(c.Request.Context(), eventID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"position":       position,
+		"total_in_queue": total,
 		"estimated_wait": h.svc.EstimateWait(position),
 	})
 }
@@ -44,9 +46,11 @@ func (h *QueueHandler) GetPosition(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "未在排隊中"})
 		return
 	}
+	total, _ := h.svc.QueueSize(c.Request.Context(), eventID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"position":       position,
+		"total_in_queue": total,
 		"estimated_wait": h.svc.EstimateWait(position),
 	})
 }

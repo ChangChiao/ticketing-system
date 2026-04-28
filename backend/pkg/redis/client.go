@@ -89,7 +89,11 @@ func (c *Client) AreSeatsLocked(ctx context.Context, eventID string, seatIDs []s
 func (c *Client) QueueJoin(ctx context.Context, eventID, userToken string) error {
 	key := fmt.Sprintf("queue:%s", eventID)
 	score := float64(time.Now().UnixMicro())
-	return c.rdb.ZAdd(ctx, key, goredis.Z{Score: score, Member: userToken}).Err()
+	pipe := c.rdb.TxPipeline()
+	pipe.ZAdd(ctx, key, goredis.Z{Score: score, Member: userToken})
+	pipe.SAdd(ctx, "queue_events", eventID)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 func (c *Client) QueuePosition(ctx context.Context, eventID, userToken string) (int64, error) {
@@ -119,6 +123,15 @@ func (c *Client) QueueSize(ctx context.Context, eventID string) (int64, error) {
 	return c.rdb.ZCard(ctx, key).Result()
 }
 
+func (c *Client) QueueMembers(ctx context.Context, eventID string) ([]string, error) {
+	key := fmt.Sprintf("queue:%s", eventID)
+	return c.rdb.ZRange(ctx, key, 0, -1).Result()
+}
+
+func (c *Client) QueueEventIDs(ctx context.Context) ([]string, error) {
+	return c.rdb.SMembers(ctx, "queue_events").Result()
+}
+
 // Session tracking
 func (c *Client) SetActiveSession(ctx context.Context, eventID, userID, sessionID string) (bool, error) {
 	key := fmt.Sprintf("active_session:%s:%s", eventID, userID)
@@ -128,6 +141,20 @@ func (c *Client) SetActiveSession(ctx context.Context, eventID, userID, sessionI
 func (c *Client) RemoveActiveSession(ctx context.Context, eventID, userID string) error {
 	key := fmt.Sprintf("active_session:%s:%s", eventID, userID)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+func (c *Client) SetQueueAdmission(ctx context.Context, eventID, userID string, ttl time.Duration) error {
+	key := fmt.Sprintf("queue_admission:%s:%s", eventID, userID)
+	return c.rdb.Set(ctx, key, "1", ttl).Err()
+}
+
+func (c *Client) HasQueueAdmission(ctx context.Context, eventID, userID string) (bool, error) {
+	key := fmt.Sprintf("queue_admission:%s:%s", eventID, userID)
+	result, err := c.rdb.Exists(ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+	return result > 0, nil
 }
 
 // Availability cache

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/ticketing-system/backend/internal/model"
 )
 
@@ -92,8 +93,8 @@ func (r *OrderRepository) ConfirmOrderTx(ctx context.Context, orderID, eventID s
 	// Mark seats as sold
 	_, err = tx.ExecContext(ctx, `
 		UPDATE event_seats SET status = 'sold'
-		WHERE event_id = $1 AND seat_id = ANY($2)
-	`, eventID, seatIDs)
+		WHERE event_id = $1 AND id = ANY($2)
+	`, eventID, pq.Array(seatIDs))
 	if err != nil {
 		return err
 	}

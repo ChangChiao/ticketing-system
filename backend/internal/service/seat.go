@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"sort"
 	"time"
 
@@ -32,6 +33,22 @@ func (s *SeatService) GetAvailability(ctx context.Context, eventID string) ([]mo
 	return s.repo.GetAvailability(ctx, eventID)
 }
 
+func (s *SeatService) StartExpiredLockCleanupWorker(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.repo.ReleaseExpiredLocks(ctx); err != nil {
+				log.Printf("seat lock cleanup worker: %v", err)
+			}
+		}
+	}
+}
+
 func (s *SeatService) AllocateSeats(ctx context.Context, eventID, sectionID, userID string, quantity int) (*model.AllocatedSeats, error) {
 	_, sectionName, err := s.repo.GetSectionInfo(ctx, eventID, sectionID)
 	if err != nil {
@@ -56,6 +73,11 @@ func (s *SeatService) AllocateSeats(ctx context.Context, eventID, sectionID, use
 		}
 		if !locked {
 			continue // retry with different seats
+		}
+
+		if err := s.repo.MarkSeatsAsLocked(ctx, eventID, seatIDs, userID); err != nil {
+			_ = s.redis.UnlockSeats(ctx, eventID, seatIDs)
+			return nil, err
 		}
 
 		seatInfos := make([]model.SeatInfo, len(seats))

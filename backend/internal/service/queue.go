@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"time"
 
 	pkgredis "github.com/ticketing-system/backend/pkg/redis"
 )
@@ -11,9 +13,10 @@ import (
 var ErrAlreadyInQueue = errors.New("您已在排隊中，請回到原視窗")
 
 const (
-	BatchSize      = 50
-	MaxConcurrent  = 500
-	BatchIntervalS = 5
+	BatchSize          = 50
+	MaxConcurrent      = 500
+	BatchIntervalS     = 5
+	EntryWindowSeconds = 60
 )
 
 type QueueService struct {
@@ -62,5 +65,84 @@ func (s *QueueService) AdmitNextBatch(ctx context.Context, eventID string) ([]st
 	if err != nil {
 		return nil, err
 	}
+	for _, token := range tokens {
+		if err := s.redis.SetQueueAdmission(ctx, eventID, token, EntryWindowSeconds*time.Second); err != nil {
+			return nil, err
+		}
+	}
 	return tokens, nil
+}
+
+func (s *QueueService) IsAdmitted(ctx context.Context, eventID, userID string) (bool, error) {
+	return s.redis.HasQueueAdmission(ctx, eventID, userID)
+}
+
+func (s *QueueService) ActiveEventIDs(ctx context.Context) ([]string, error) {
+	return s.redis.QueueEventIDs(ctx)
+}
+
+func (s *QueueService) QueueMembers(ctx context.Context, eventID string) ([]string, error) {
+	return s.redis.QueueMembers(ctx, eventID)
+}
+
+func (s *QueueService) QueueSize(ctx context.Context, eventID string) (int64, error) {
+	return s.redis.QueueSize(ctx, eventID)
+}
+
+func (s *QueueService) StartAdmissionWorker(ctx context.Context, notify func(eventID, userID string)) {
+	ticker := time.NewTicker(BatchIntervalS * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			eventIDs, err := s.ActiveEventIDs(ctx)
+			if err != nil {
+				log.Printf("queue admission worker: list events: %v", err)
+				continue
+			}
+			for _, eventID := range eventIDs {
+				users, err := s.AdmitNextBatch(ctx, eventID)
+				if err != nil {
+					log.Printf("queue admission worker: admit %s: %v", eventID, err)
+					continue
+				}
+				for _, userID := range users {
+					notify(eventID, userID)
+				}
+			}
+		}
+	}
+}
+
+func (s *QueueService) StartPositionUpdateWorker(ctx context.Context, notify func(eventID, userID string, position, total int64, estimatedWait string)) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			eventIDs, err := s.ActiveEventIDs(ctx)
+			if err != nil {
+				log.Printf("queue position worker: list events: %v", err)
+				continue
+			}
+			for _, eventID := range eventIDs {
+				users, err := s.QueueMembers(ctx, eventID)
+				if err != nil {
+					log.Printf("queue position worker: members %s: %v", eventID, err)
+					continue
+				}
+				total := int64(len(users))
+				for position, userID := range users {
+					pos := int64(position)
+					notify(eventID, userID, pos, total, s.EstimateWait(pos))
+				}
+			}
+		}
+	}
 }

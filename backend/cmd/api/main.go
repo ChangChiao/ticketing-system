@@ -61,10 +61,35 @@ func main() {
 
 	// Start payment warning worker (10.3)
 	go orderSvc.StartPaymentWarningWorker(context.Background())
+	go seatSvc.StartExpiredLockCleanupWorker(context.Background())
+	go queueSvc.StartAdmissionWorker(context.Background(), func(eventID, userID string) {
+		wsHub.SendToUser(userID, ws.Message{
+			Type: "queue_update",
+			Data: gin.H{
+				"event_id":       eventID,
+				"position":       0,
+				"estimated_wait": "即將輪到您",
+				"status":         "your_turn",
+				"entry_window":   service.EntryWindowSeconds,
+			},
+		})
+	})
+	go queueSvc.StartPositionUpdateWorker(context.Background(), func(eventID, userID string, position, total int64, estimatedWait string) {
+		wsHub.SendToUser(userID, ws.Message{
+			Type: "queue_update",
+			Data: gin.H{
+				"event_id":       eventID,
+				"position":       position,
+				"total_in_queue": total,
+				"estimated_wait": estimatedWait,
+				"status":         "waiting",
+			},
+		})
+	})
 
 	// Handlers
 	eventHandler := handler.NewEventHandler(eventSvc)
-	seatHandler := handler.NewSeatHandler(seatSvc)
+	seatHandler := handler.NewSeatHandler(seatSvc, queueSvc)
 	orderHandler := handler.NewOrderHandler(orderSvc, linePayCli)
 	authHandler := handler.NewAuthHandler(authSvc)
 	queueHandler := handler.NewQueueHandler(queueSvc)
@@ -94,14 +119,14 @@ func main() {
 		// Protected routes
 		protected := api.Group("")
 		protected.Use(middleware.Auth(cfg.JWTSecret))
-		protected.Use(middleware.RateLimit(redisClient, 100, time.Minute))           // 100 req/min per user
-		protected.Use(middleware.RequestSignature(cfg.RequestSignSecret)) // Request signature validation
+		protected.Use(middleware.RateLimit(redisClient, 100, time.Minute)) // 100 req/min per user
+		protected.Use(middleware.RequestSignature(cfg.RequestSignSecret))  // Request signature validation
 		{
 			// Queue join: CAPTCHA + device fingerprint + IP queue rate limit
 			protected.POST("/events/:id/queue/join",
 				middleware.CaptchaVerify(cfg.TurnstileSecretKey),
-				middleware.DeviceFingerprintLimit(redisClient, 3, time.Minute),     // 3 queue entries per device
-				middleware.IPRateLimit(redisClient, 5, time.Minute),                // 5 queue entries/min per IP
+				middleware.DeviceFingerprintLimit(redisClient, 3, time.Minute), // 3 queue entries per device
+				middleware.IPRateLimit(redisClient, 5, time.Minute),            // 5 queue entries/min per IP
 				queueHandler.JoinQueue,
 			)
 			protected.GET("/events/:id/queue/position", queueHandler.GetPosition)

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/ticketing-system/backend/internal/model"
 )
 
@@ -49,13 +50,13 @@ func (r *SeatRepository) GetAvailableSeatsInSection(ctx context.Context, eventID
 			rw.id as row_id,
 			rw.label as row_label,
 			rw.sort_order,
-			se.id as seat_id,
+			evt.id as seat_id,
 			se.number
 		FROM rows rw
 		JOIN seats se ON se.row_id = rw.id
-		LEFT JOIN event_seats evt ON evt.seat_id = se.id AND evt.event_id = $1
+		JOIN event_seats evt ON evt.seat_id = se.id AND evt.event_id = $1
 		WHERE rw.section_id = $2
-			AND (evt.status IS NULL OR evt.status = 'available')
+			AND evt.status = 'available'
 		ORDER BY rw.sort_order, se.number
 	`
 	var seats []RowWithSeats
@@ -85,9 +86,19 @@ func (r *SeatRepository) MarkSeatsAsSold(ctx context.Context, eventID string, se
 	query := `
 		UPDATE event_seats
 		SET status = 'sold'
-		WHERE event_id = $1 AND seat_id = ANY($2)
+		WHERE event_id = $1 AND id = ANY($2)
 	`
-	_, err := r.db.ExecContext(ctx, query, eventID, seatIDs)
+	_, err := r.db.ExecContext(ctx, query, eventID, pq.Array(seatIDs))
+	return err
+}
+
+func (r *SeatRepository) MarkSeatsAsLocked(ctx context.Context, eventID string, eventSeatIDs []string, userID string) error {
+	query := `
+		UPDATE event_seats
+		SET status = 'locked', locked_by = $3, locked_at = NOW()
+		WHERE event_id = $1 AND id = ANY($2) AND status = 'available'
+	`
+	_, err := r.db.ExecContext(ctx, query, eventID, pq.Array(eventSeatIDs), userID)
 	return err
 }
 
@@ -95,8 +106,18 @@ func (r *SeatRepository) ReleaseSeats(ctx context.Context, eventID string, seatI
 	query := `
 		UPDATE event_seats
 		SET status = 'available', locked_by = NULL, locked_at = NULL
-		WHERE event_id = $1 AND seat_id = ANY($2)
+		WHERE event_id = $1 AND id = ANY($2) AND status = 'locked'
 	`
-	_, err := r.db.ExecContext(ctx, query, eventID, seatIDs)
+	_, err := r.db.ExecContext(ctx, query, eventID, pq.Array(seatIDs))
+	return err
+}
+
+func (r *SeatRepository) ReleaseExpiredLocks(ctx context.Context) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE event_seats
+		SET status = 'available', locked_by = NULL, locked_at = NULL
+		WHERE status = 'locked'
+			AND locked_at < NOW() - INTERVAL '10 minutes'
+	`)
 	return err
 }

@@ -81,38 +81,45 @@ export default function QueuePage() {
 
     const wsBase = getWebSocketBaseURL();
     const wsUrl = `${wsBase}/ws?user_id=${user.id}&event_id=${eventId}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "queue_update") {
-          setPosition(msg.data.position);
-          setTotalInQueue(msg.data.total_in_queue || totalInQueue);
-          setEstimatedWait(msg.data.estimated_wait);
-          if (msg.data.status === "your_turn") {
-            setStatus("your_turn");
-            turnTimerRef.current = setTimeout(() => {
-              setError("您未在時間內進入選位頁面，已重新排隊");
-              setStatus("waiting");
-            }, 60000);
+    const connect = () => {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "queue_update") {
+            setPosition(msg.data.position);
+            setTotalInQueue(msg.data.total_in_queue || totalInQueue);
+            setEstimatedWait(msg.data.estimated_wait);
+            if (msg.data.status === "your_turn") {
+              setStatus("your_turn");
+              turnTimerRef.current = setTimeout(() => {
+                setError("您未在時間內進入選位頁面，請重新排隊");
+              }, 60000);
+            }
           }
+        } catch {
+          // ignore parse errors
         }
-      } catch { /* ignore parse errors */ }
+      };
+
+      ws.onclose = () => {
+        setTimeout(() => {
+          if (wsRef.current === ws) {
+            connect();
+          }
+        }, 3000);
+      };
     };
 
-    ws.onclose = () => {
-      setTimeout(() => {
-        if (wsRef.current === ws) {
-          const reconnect = new WebSocket(wsUrl);
-          wsRef.current = reconnect;
-        }
-      }, 3000);
-    };
+    connect();
 
     return () => {
-      ws.close();
+      const ws = wsRef.current;
+      wsRef.current = null;
+      ws?.close();
       if (turnTimerRef.current) clearTimeout(turnTimerRef.current);
     };
   }, [status, user, eventId, totalInQueue]);

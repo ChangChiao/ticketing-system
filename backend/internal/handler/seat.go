@@ -8,11 +8,16 @@ import (
 )
 
 type SeatHandler struct {
-	svc *service.SeatService
+	svc      *service.SeatService
+	queueSvc *service.QueueService
 }
 
-func NewSeatHandler(svc *service.SeatService) *SeatHandler {
-	return &SeatHandler{svc: svc}
+func NewSeatHandler(svc *service.SeatService, queueSvc ...*service.QueueService) *SeatHandler {
+	h := &SeatHandler{svc: svc}
+	if len(queueSvc) > 0 {
+		h.queueSvc = queueSvc[0]
+	}
+	return h
 }
 
 func (h *SeatHandler) GetAvailability(c *gin.Context) {
@@ -28,6 +33,18 @@ func (h *SeatHandler) GetAvailability(c *gin.Context) {
 func (h *SeatHandler) AllocateSeats(c *gin.Context) {
 	eventID := c.Param("id")
 	userID := c.GetString("user_id")
+
+	if h.queueSvc != nil {
+		admitted, err := h.queueSvc.IsAdmitted(c.Request.Context(), eventID, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "無法驗證排隊狀態"})
+			return
+		}
+		if !admitted {
+			c.JSON(http.StatusForbidden, gin.H{"error": "尚未輪到您選位，請回到排隊頁面"})
+			return
+		}
+	}
 
 	var req struct {
 		SectionID string `json:"section_id" binding:"required"`
