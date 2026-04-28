@@ -44,6 +44,20 @@ spec:
                 secretKeyRef:
                   name: ticketing-secrets
                   key: linepay-channel-secret
+            - name: LINEPAY_BASE_URL
+              value: https://sandbox-api-pay.line.me
+            - name: APP_BASE_URL
+              value: https://tickets.example.com
+            - name: TURNSTILE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ticketing-secrets
+                  key: turnstile-secret-key
+            - name: REQUEST_SIGN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ticketing-secrets
+                  key: request-sign-secret
           resources:
             requests:
               cpu: "250m"
