@@ -14,6 +14,18 @@ spec:
       labels:
         app: ticketing-ws
     spec:
+      initContainers:
+        - name: migrate
+          image: ticketing-api:latest
+          command: ["/migrate"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ticketing-secrets
+                  key: database-url
+            - name: MIGRATIONS_DIR
+              value: /migrations
       containers:
         - name: ws
           image: ticketing-api:latest
