@@ -60,10 +60,20 @@ func generateCallbackToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, seats []model.SeatInfo, pricePerSeat int) (*model.Order, error) {
+func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, seats []model.SeatInfo) (*model.Order, error) {
+	lockedSeats, err := s.seatSvc.GetLockedSeatsForOrder(ctx, eventID, userID, seats)
+	if err != nil {
+		return nil, err
+	}
+
 	callbackToken, err := generateCallbackToken()
 	if err != nil {
 		return nil, err
+	}
+
+	total := 0
+	for _, seat := range lockedSeats {
+		total += seat.Price
 	}
 
 	now := time.Now()
@@ -72,14 +82,14 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, 
 		UserID:        userID,
 		EventID:       eventID,
 		Status:        "pending",
-		Total:         pricePerSeat * len(seats),
+		Total:         total,
 		CallbackToken: callbackToken,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
 
-	items := make([]model.OrderItem, len(seats))
-	for i, seat := range seats {
+	items := make([]model.OrderItem, len(lockedSeats))
+	for i, seat := range lockedSeats {
 		items[i] = model.OrderItem{
 			ID:          uuid.New().String(),
 			OrderID:     order.ID,
@@ -87,7 +97,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID, eventID string, 
 			SectionName: seat.SectionName,
 			RowLabel:    seat.RowLabel,
 			SeatNumber:  seat.SeatNumber,
-			Price:       pricePerSeat,
+			Price:       seat.Price,
 		}
 	}
 

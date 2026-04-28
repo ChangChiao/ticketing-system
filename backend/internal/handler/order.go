@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -25,15 +26,19 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	var req struct {
 		EventID      string           `json:"event_id" binding:"required"`
 		Seats        []model.SeatInfo `json:"seats" binding:"required"`
-		PricePerSeat int              `json:"price_per_seat" binding:"required"`
+		PricePerSeat int              `json:"price_per_seat"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "訂單資料不完整"})
 		return
 	}
 
-	order, err := h.svc.CreateOrder(c.Request.Context(), userID, req.EventID, req.Seats, req.PricePerSeat)
+	order, err := h.svc.CreateOrder(c.Request.Context(), userID, req.EventID, req.Seats)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidSeatLock) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "建立訂單失敗"})
 		return
 	}
@@ -43,8 +48,8 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		OrderID:       order.ID,
 		Amount:        order.Total,
 		ProductName:   "演唱會門票",
-		Quantity:      len(req.Seats),
-		Price:         req.PricePerSeat,
+		Quantity:      1,
+		Price:         order.Total,
 		CallbackToken: order.CallbackToken,
 	})
 	if err != nil {

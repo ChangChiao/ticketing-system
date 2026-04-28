@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
@@ -42,6 +43,14 @@ type RowWithSeats struct {
 	SortOrder int    `db:"sort_order"`
 	SeatID    string `db:"seat_id"`
 	Number    int    `db:"number"`
+}
+
+type LockedSeatForOrder struct {
+	EventSeatID string `db:"event_seat_id"`
+	SectionName string `db:"section_name"`
+	RowLabel    string `db:"row_label"`
+	SeatNumber  int    `db:"seat_number"`
+	Price       int    `db:"price"`
 }
 
 func (r *SeatRepository) GetAvailableSeatsInSection(ctx context.Context, eventID, sectionID string) ([]RowWithSeats, error) {
@@ -98,8 +107,18 @@ func (r *SeatRepository) MarkSeatsAsLocked(ctx context.Context, eventID string, 
 		SET status = 'locked', locked_by = $3, locked_at = NOW()
 		WHERE event_id = $1 AND id = ANY($2) AND status = 'available'
 	`
-	_, err := r.db.ExecContext(ctx, query, eventID, pq.Array(eventSeatIDs), userID)
-	return err
+	result, err := r.db.ExecContext(ctx, query, eventID, pq.Array(eventSeatIDs), userID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != int64(len(eventSeatIDs)) {
+		return fmt.Errorf("locked %d of %d requested seats", affected, len(eventSeatIDs))
+	}
+	return nil
 }
 
 func (r *SeatRepository) ReleaseSeats(ctx context.Context, eventID string, seatIDs []string) error {
@@ -120,4 +139,27 @@ func (r *SeatRepository) ReleaseExpiredLocks(ctx context.Context) error {
 			AND locked_at < NOW() - INTERVAL '10 minutes'
 	`)
 	return err
+}
+
+func (r *SeatRepository) GetLockedSeatsForOrder(ctx context.Context, eventID, userID string, eventSeatIDs []string) ([]LockedSeatForOrder, error) {
+	var seats []LockedSeatForOrder
+	err := r.db.SelectContext(ctx, &seats, `
+		SELECT
+			evt.id AS event_seat_id,
+			s.name AS section_name,
+			rw.label AS row_label,
+			se.number AS seat_number,
+			es.price AS price
+		FROM event_seats evt
+		JOIN seats se ON se.id = evt.seat_id
+		JOIN rows rw ON rw.id = se.row_id
+		JOIN sections s ON s.id = rw.section_id
+		JOIN event_sections es ON es.event_id = evt.event_id AND es.section_id = s.id
+		WHERE evt.event_id = $1
+			AND evt.id = ANY($2)
+			AND evt.status = 'locked'
+			AND evt.locked_by = $3
+		ORDER BY s.sort_order, rw.sort_order, se.number
+	`, eventID, pq.Array(eventSeatIDs), userID)
+	return seats, err
 }

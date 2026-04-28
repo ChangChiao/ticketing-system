@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"time"
@@ -16,6 +17,7 @@ import (
 var (
 	ErrNoConsecutiveSeats = errors.New("此區域已無連續座位，請減少張數或選擇其他區域")
 	ErrSeatLockFailed     = errors.New("此區域座位搶購中，請稍後重試或選擇其他區域")
+	ErrInvalidSeatLock    = errors.New("座位鎖定已失效，請重新選位")
 )
 
 const maxRetries = 3
@@ -31,6 +33,28 @@ func NewSeatService(repo *repository.SeatRepository, redis *pkgredis.Client) *Se
 
 func (s *SeatService) GetAvailability(ctx context.Context, eventID string) ([]model.SectionAvailability, error) {
 	return s.repo.GetAvailability(ctx, eventID)
+}
+
+func (s *SeatService) GetLockedSeatsForOrder(ctx context.Context, eventID, userID string, requestedSeats []model.SeatInfo) ([]repository.LockedSeatForOrder, error) {
+	eventSeatIDs := make([]string, 0, len(requestedSeats))
+	for _, seat := range requestedSeats {
+		if seat.EventSeatID == "" {
+			return nil, ErrInvalidSeatLock
+		}
+		eventSeatIDs = append(eventSeatIDs, seat.EventSeatID)
+	}
+	if len(eventSeatIDs) == 0 {
+		return nil, ErrInvalidSeatLock
+	}
+
+	seats, err := s.repo.GetLockedSeatsForOrder(ctx, eventID, userID, eventSeatIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(seats) != len(eventSeatIDs) {
+		return nil, fmt.Errorf("%w: expected %d locked seats, got %d", ErrInvalidSeatLock, len(eventSeatIDs), len(seats))
+	}
+	return seats, nil
 }
 
 func (s *SeatService) StartExpiredLockCleanupWorker(ctx context.Context) {
