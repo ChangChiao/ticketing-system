@@ -69,6 +69,9 @@ func (s *QueueService) AdmitNextBatch(ctx context.Context, eventID string) ([]st
 		if err := s.redis.SetQueueAdmission(ctx, eventID, token, EntryWindowSeconds*time.Second); err != nil {
 			return nil, err
 		}
+		if err := s.redis.RemoveActiveSession(ctx, eventID, token); err != nil {
+			return nil, err
+		}
 	}
 	return tokens, nil
 }
