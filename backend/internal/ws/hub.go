@@ -33,11 +33,12 @@ type AvailabilityUpdate struct {
 }
 
 type Client struct {
-	hub    *Hub
-	conn   *websocket.Conn
-	send   chan []byte
-	userID string
-	rooms  map[string]bool // event IDs
+	hub     *Hub
+	conn    *websocket.Conn
+	send    chan []byte
+	userID  string
+	eventID string
+	rooms   map[string]bool // event IDs
 }
 
 type Hub struct {
@@ -108,6 +109,7 @@ func (h *Hub) Run() {
 					delete(h.rooms[room], client)
 				}
 				close(client.send)
+				h.scheduleQueueDisconnectCleanup(client.userID, client.eventID)
 			}
 			h.mu.Unlock()
 
@@ -174,11 +176,12 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &Client{
-		hub:    h,
-		conn:   conn,
-		send:   make(chan []byte, 256),
-		userID: userID,
-		rooms:  map[string]bool{"queue:" + eventID: true, "availability:" + eventID: true},
+		hub:     h,
+		conn:    conn,
+		send:    make(chan []byte, 256),
+		userID:  userID,
+		eventID: eventID,
+		rooms:   map[string]bool{"queue:" + eventID: true, "availability:" + eventID: true},
 	}
 
 	h.register <- client
@@ -214,6 +217,37 @@ func (h *Hub) userIDFromToken(rawToken string) (string, error) {
 	}
 
 	return userID, nil
+}
+
+func (h *Hub) scheduleQueueDisconnectCleanup(userID, eventID string) {
+	if h.redis == nil || userID == "" || eventID == "" {
+		return
+	}
+
+	go func() {
+		time.Sleep(30 * time.Second)
+		if h.hasConnectedUserForEvent(userID, eventID) {
+			return
+		}
+		ctx := context.Background()
+		if err := h.redis.QueueRemove(ctx, eventID, userID); err != nil {
+			log.Printf("ws: failed to remove disconnected queue user %s/%s: %v", eventID, userID, err)
+		}
+		if err := h.redis.RemoveActiveSession(ctx, eventID, userID); err != nil {
+			log.Printf("ws: failed to remove disconnected queue session %s/%s: %v", eventID, userID, err)
+		}
+	}()
+}
+
+func (h *Hub) hasConnectedUserForEvent(userID, eventID string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for client := range h.clients {
+		if client.userID == userID && client.eventID == eventID {
+			return true
+		}
+	}
+	return false
 }
 
 // SubscribeRedis listens to Redis Pub/Sub channels and bridges messages to WebSocket rooms.

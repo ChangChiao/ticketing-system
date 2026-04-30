@@ -118,6 +118,11 @@ func (c *Client) QueuePop(ctx context.Context, eventID string, count int64) ([]s
 	return tokens, nil
 }
 
+func (c *Client) QueueRemove(ctx context.Context, eventID, userToken string) error {
+	key := fmt.Sprintf("queue:%s", eventID)
+	return c.rdb.ZRem(ctx, key, userToken).Err()
+}
+
 func (c *Client) QueueSize(ctx context.Context, eventID string) (int64, error) {
 	key := fmt.Sprintf("queue:%s", eventID)
 	return c.rdb.ZCard(ctx, key).Result()
