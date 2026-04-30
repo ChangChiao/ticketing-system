@@ -48,6 +48,7 @@ type Hub struct {
 	mu         sync.RWMutex
 	upgrader   websocket.Upgrader
 	jwtSecret  string
+	redis      *pkgredis.Client
 }
 
 type RoomMessage struct {
@@ -178,6 +179,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.register <- client
+	h.sendInitialQueueState(r.Context(), client, eventID)
 
 	go client.writePump()
 	go client.readPump()
@@ -213,6 +215,7 @@ func (h *Hub) userIDFromToken(rawToken string) (string, error) {
 
 // SubscribeRedis listens to Redis Pub/Sub channels and bridges messages to WebSocket rooms.
 func (h *Hub) SubscribeRedis(redisClient *pkgredis.Client) {
+	h.redis = redisClient
 	ctx := context.Background()
 
 	// Availability updates
@@ -258,6 +261,79 @@ func (h *Hub) SubscribeRedis(redisClient *pkgredis.Client) {
 			})
 		}
 	}()
+}
+
+func (h *Hub) sendInitialQueueState(ctx context.Context, client *Client, eventID string) {
+	if h.redis == nil || client.userID == "" {
+		return
+	}
+
+	if admitted, err := h.redis.HasQueueAdmission(ctx, eventID, client.userID); err == nil && admitted {
+		h.sendToClient(client, Message{
+			Type: "queue_update",
+			Data: map[string]interface{}{
+				"event_id":       eventID,
+				"position":       0,
+				"estimated_wait": "即將輪到您",
+				"status":         "your_turn",
+				"entry_window":   60,
+			},
+		})
+		return
+	}
+
+	if active, err := h.redis.HasSelectionSession(ctx, eventID, client.userID); err == nil && active {
+		h.sendToClient(client, Message{
+			Type: "queue_update",
+			Data: map[string]interface{}{
+				"event_id":       eventID,
+				"position":       0,
+				"estimated_wait": "即將輪到您",
+				"status":         "your_turn",
+			},
+		})
+		return
+	}
+
+	position, err := h.redis.QueuePosition(ctx, eventID, client.userID)
+	if err != nil {
+		return
+	}
+	total, _ := h.redis.QueueSize(ctx, eventID)
+	h.sendToClient(client, Message{
+		Type: "queue_update",
+		Data: map[string]interface{}{
+			"event_id":       eventID,
+			"position":       position,
+			"total_in_queue": total,
+			"estimated_wait": estimateWait(position),
+			"status":         "waiting",
+		},
+	})
+}
+
+func (h *Hub) sendToClient(client *Client, msg Message) {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	select {
+	case client.send <- data:
+	default:
+	}
+}
+
+func estimateWait(position int64) string {
+	if position <= 0 {
+		return "即將輪到您"
+	}
+	const batchSize int64 = 50
+	const batchIntervalS int64 = 5
+	seconds := (position / batchSize) * batchIntervalS
+	if seconds < 60 {
+		return fmt.Sprintf("約 %d 秒", seconds)
+	}
+	return fmt.Sprintf("約 %d 分鐘", seconds/60+1)
 }
 
 func (c *Client) readPump() {
