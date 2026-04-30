@@ -120,6 +120,18 @@ func (s *OrderService) GetOrder(ctx context.Context, id string) (*model.Order, [
 	return order, items, nil
 }
 
+func (s *OrderService) GetUserOrder(ctx context.Context, id, userID string) (*model.Order, []model.OrderItem, error) {
+	order, err := s.repo.GetByIDForUser(ctx, id, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	items, err := s.repo.GetOrderItems(ctx, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	return order, items, nil
+}
+
 func (s *OrderService) ListOrders(ctx context.Context, userID string) ([]model.Order, error) {
 	return s.repo.ListByUser(ctx, userID)
 }

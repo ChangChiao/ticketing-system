@@ -81,7 +81,8 @@ func (h *OrderHandler) ListOrders(c *gin.Context) {
 
 func (h *OrderHandler) GetOrder(c *gin.Context) {
 	id := c.Param("id")
-	order, items, err := h.svc.GetOrder(c.Request.Context(), id)
+	userID := c.GetString("user_id")
+	order, items, err := h.svc.GetUserOrder(c.Request.Context(), id, userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "找不到此訂單"})
 		return
