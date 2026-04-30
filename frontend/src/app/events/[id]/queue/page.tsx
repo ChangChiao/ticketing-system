@@ -80,7 +80,7 @@ export default function QueuePage() {
     if (status !== "waiting" || !user) return;
 
     const wsBase = getWebSocketBaseURL();
-    const wsUrl = `${wsBase}/ws?user_id=${user.id}&event_id=${eventId}`;
+    const wsUrl = `${wsBase}/ws?event_id=${eventId}&token=${encodeURIComponent(token || "")}`;
 
     const connect = () => {
       const ws = new WebSocket(wsUrl);
@@ -122,7 +122,7 @@ export default function QueuePage() {
       ws?.close();
       if (turnTimerRef.current) clearTimeout(turnTimerRef.current);
     };
-  }, [status, user, eventId, totalInQueue]);
+  }, [status, user, eventId, token, totalInQueue]);
 
   const handleEnterSelection = () => {
     if (turnTimerRef.current) clearTimeout(turnTimerRef.current);

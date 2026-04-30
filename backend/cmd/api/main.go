@@ -55,7 +55,7 @@ func main() {
 	linePayCli := linepay.NewClient(cfg.LinePayChannelID, cfg.LinePayChannelSecret, cfg.LinePayBaseURL, cfg.AppBaseURL)
 
 	// WebSocket Hub
-	wsHub := ws.NewHub(cfg.AppBaseURL)
+	wsHub := ws.NewHub(cfg.AppBaseURL, cfg.JWTSecret)
 	go wsHub.Run()
 	wsHub.SubscribeRedis(redisClient)
 

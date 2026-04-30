@@ -22,6 +22,7 @@ export default function SelectPage() {
   const [timer, setTimer] = useState(600); // 10 min countdown
   const wsRef = useRef<WebSocket | null>(null);
   const user = useAuthStore((s) => s.user);
+  const token = useAuthStore((s) => s.token);
 
   // Update section availability from WebSocket message
   const handleAvailabilityUpdate = useCallback((sectionId: string, remaining: number) => {
@@ -47,7 +48,9 @@ export default function SelectPage() {
   // WebSocket connection for real-time availability updates
   useEffect(() => {
     const wsBase = getWebSocketBaseURL();
-    const wsUrl = `${wsBase}/ws?event_id=${eventId}&user_id=${user?.id || ""}`;
+    const wsParams = new URLSearchParams({ event_id: eventId });
+    if (token) wsParams.set("token", token);
+    const wsUrl = `${wsBase}/ws?${wsParams.toString()}`;
 
     const connect = () => {
       const ws = new WebSocket(wsUrl);
@@ -79,7 +82,7 @@ export default function SelectPage() {
       wsRef.current = null;
       ws?.close();
     };
-  }, [eventId, user?.id, handleAvailabilityUpdate]);
+  }, [eventId, token, handleAvailabilityUpdate]);
 
   useEffect(() => {
     const interval = setInterval(() => {

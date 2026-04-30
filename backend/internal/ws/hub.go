@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	pkgredis "github.com/ticketing-system/backend/pkg/redis"
 )
@@ -46,6 +47,7 @@ type Hub struct {
 	broadcast  chan RoomMessage
 	mu         sync.RWMutex
 	upgrader   websocket.Upgrader
+	jwtSecret  string
 }
 
 type RoomMessage struct {
@@ -53,7 +55,7 @@ type RoomMessage struct {
 	Message []byte
 }
 
-func NewHub(allowedOrigin string) *Hub {
+func NewHub(allowedOrigin, jwtSecret string) *Hub {
 	// Parse the allowed origin to extract scheme + host for comparison
 	parsed, _ := url.Parse(allowedOrigin)
 	allowedHost := ""
@@ -67,6 +69,7 @@ func NewHub(allowedOrigin string) *Hub {
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		broadcast:  make(chan RoomMessage, 256),
+		jwtSecret:  jwtSecret,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				origin := r.Header.Get("Origin")
@@ -148,14 +151,23 @@ func (h *Hub) SendToUser(userID string, msg Message) {
 }
 
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	userID, err := h.userIDFromToken(r.URL.Query().Get("token"))
+	if err != nil {
+		http.Error(w, "invalid websocket token", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("ws upgrade error: %v", err)
 		return
 	}
 
-	userID := r.URL.Query().Get("user_id")
 	eventID := r.URL.Query().Get("event_id")
+	if eventID == "" {
+		conn.Close()
+		return
+	}
 
 	client := &Client{
 		hub:    h,
@@ -169,6 +181,34 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump()
 	go client.readPump()
+}
+
+func (h *Hub) userIDFromToken(rawToken string) (string, error) {
+	if rawToken == "" {
+		return "", nil
+	}
+
+	token, err := jwt.Parse(rawToken, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(h.jwtSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return "", jwt.ErrTokenInvalidClaims
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", jwt.ErrTokenInvalidClaims
+	}
+
+	userID, ok := claims["user_id"].(string)
+	if !ok || userID == "" {
+		return "", jwt.ErrTokenInvalidClaims
+	}
+
+	return userID, nil
 }
 
 // SubscribeRedis listens to Redis Pub/Sub channels and bridges messages to WebSocket rooms.
