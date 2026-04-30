@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,6 +27,19 @@ func RequestSignature(secret string) gin.HandlerFunc {
 
 		if signature == "" || timestamp == "" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "缺少請求簽名"})
+			c.Abort()
+			return
+		}
+
+		ts, err := strconv.ParseInt(timestamp, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "請求時間戳格式錯誤"})
+			c.Abort()
+			return
+		}
+		requestTime := time.UnixMilli(ts)
+		if time.Since(requestTime) > 5*time.Minute || time.Until(requestTime) > 1*time.Minute {
+			c.JSON(http.StatusForbidden, gin.H{"error": "請求簽名已過期"})
 			c.Abort()
 			return
 		}

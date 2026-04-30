@@ -15,8 +15,8 @@ func DeviceFingerprintLimit(redisClient *pkgredis.Client, maxEntries int, window
 	return func(c *gin.Context) {
 		fingerprint := c.GetHeader("X-Device-Fingerprint")
 		if fingerprint == "" {
-			// No fingerprint provided — allow but don't track
-			c.Next()
+			c.JSON(http.StatusBadRequest, gin.H{"error": "缺少裝置指紋"})
+			c.Abort()
 			return
 		}
 
