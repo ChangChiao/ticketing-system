@@ -157,6 +157,73 @@ func (c *Client) HasQueueAdmission(ctx context.Context, eventID, userID string) 
 	return result > 0, nil
 }
 
+var startSelectionSessionScript = goredis.NewScript(`
+	local admissionKey = KEYS[1]
+	local sessionKey = KEYS[2]
+	local activeKey = KEYS[3]
+	local userID = ARGV[1]
+	local ttlSeconds = tonumber(ARGV[2])
+	local expiresAt = tonumber(ARGV[3])
+
+	if redis.call('EXISTS', sessionKey) == 0 and redis.call('EXISTS', admissionKey) == 0 then
+		return 0
+	end
+
+	redis.call('DEL', admissionKey)
+	redis.call('SET', sessionKey, '1', 'EX', ttlSeconds)
+	redis.call('ZADD', activeKey, expiresAt, userID)
+	return 1
+`)
+
+func (c *Client) StartSelectionSession(ctx context.Context, eventID, userID string, ttl time.Duration) (bool, error) {
+	admissionKey := fmt.Sprintf("queue_admission:%s:%s", eventID, userID)
+	sessionKey := fmt.Sprintf("selection_session:%s:%s", eventID, userID)
+	activeKey := fmt.Sprintf("active_selection:%s", eventID)
+	expiresAt := time.Now().Add(ttl).Unix()
+
+	result, err := startSelectionSessionScript.Run(
+		ctx,
+		c.rdb,
+		[]string{admissionKey, sessionKey, activeKey},
+		userID,
+		int(ttl.Seconds()),
+		expiresAt,
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (c *Client) HasSelectionSession(ctx context.Context, eventID, userID string) (bool, error) {
+	key := fmt.Sprintf("selection_session:%s:%s", eventID, userID)
+	result, err := c.rdb.Exists(ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+	return result > 0, nil
+}
+
+func (c *Client) EndSelectionSession(ctx context.Context, eventID, userID string) error {
+	sessionKey := fmt.Sprintf("selection_session:%s:%s", eventID, userID)
+	activeKey := fmt.Sprintf("active_selection:%s", eventID)
+	pipe := c.rdb.TxPipeline()
+	pipe.Del(ctx, sessionKey)
+	pipe.ZRem(ctx, activeKey, userID)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+func (c *Client) PruneActiveSelections(ctx context.Context, eventID string) error {
+	key := fmt.Sprintf("active_selection:%s", eventID)
+	return c.rdb.ZRemRangeByScore(ctx, key, "-inf", fmt.Sprintf("%d", time.Now().Unix())).Err()
+}
+
+func (c *Client) ActiveSelectionCount(ctx context.Context, eventID string) (int64, error) {
+	key := fmt.Sprintf("active_selection:%s", eventID)
+	return c.rdb.ZCard(ctx, key).Result()
+}
+
 // Availability cache
 func (c *Client) SetSectionRemaining(ctx context.Context, eventID, sectionID string, remaining int) error {
 	key := fmt.Sprintf("availability:%s:%s", eventID, sectionID)

@@ -130,6 +130,7 @@ func main() {
 				queueHandler.JoinQueue,
 			)
 			protected.GET("/events/:id/queue/position", queueHandler.GetPosition)
+			protected.POST("/events/:id/queue/enter", queueHandler.EnterSelection)
 			protected.POST("/events/:id/allocate", seatHandler.AllocateSeats)
 			protected.POST("/orders", orderHandler.CreateOrder)
 			protected.GET("/orders", orderHandler.ListOrders)

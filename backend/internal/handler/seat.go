@@ -35,12 +35,12 @@ func (h *SeatHandler) AllocateSeats(c *gin.Context) {
 	userID := c.GetString("user_id")
 
 	if h.queueSvc != nil {
-		admitted, err := h.queueSvc.IsAdmitted(c.Request.Context(), eventID, userID)
+		active, err := h.queueSvc.IsSelectionActive(c.Request.Context(), eventID, userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "無法驗證排隊狀態"})
 			return
 		}
-		if !admitted {
+		if !active {
 			c.JSON(http.StatusForbidden, gin.H{"error": "尚未輪到您選位，請回到排隊頁面"})
 			return
 		}
@@ -59,6 +59,9 @@ func (h *SeatHandler) AllocateSeats(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
+	}
+	if h.queueSvc != nil {
+		_ = h.queueSvc.EndSelection(c.Request.Context(), eventID, userID)
 	}
 
 	c.JSON(http.StatusOK, result)

@@ -54,3 +54,20 @@ func (h *QueueHandler) GetPosition(c *gin.Context) {
 		"estimated_wait": h.svc.EstimateWait(position),
 	})
 }
+
+func (h *QueueHandler) EnterSelection(c *gin.Context) {
+	eventID := c.Param("id")
+	userID := c.GetString("user_id")
+
+	expiresAt, err := h.svc.EnterSelection(c.Request.Context(), eventID, userID)
+	if err != nil {
+		if err == service.ErrNotAdmitted {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "無法進入選位頁面"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"expires_at": expiresAt})
+}

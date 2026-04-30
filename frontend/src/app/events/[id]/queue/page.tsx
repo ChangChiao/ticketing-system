@@ -6,6 +6,7 @@ import { Turnstile } from "@marsidev/react-turnstile";
 import { useAuthStore } from "@/stores/auth";
 import { generateFingerprint } from "@/lib/security";
 import { getWebSocketBaseURL } from "@/lib/ws";
+import { api } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
@@ -127,10 +128,15 @@ export default function QueuePage() {
     };
   }, [status, user, eventId, token, totalInQueue]);
 
-  const handleEnterSelection = () => {
+  const handleEnterSelection = async () => {
     if (turnTimerRef.current) clearTimeout(turnTimerRef.current);
-    wsRef.current?.close();
-    router.push(`/events/${eventId}/select`);
+    try {
+      await api.enterSelection(eventId);
+      wsRef.current?.close();
+      router.push(`/events/${eventId}/select`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "無法進入選位頁面，請重新排隊");
+    }
   };
 
   if (error) {

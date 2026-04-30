@@ -10,13 +10,17 @@ import (
 	pkgredis "github.com/ticketing-system/backend/pkg/redis"
 )
 
-var ErrAlreadyInQueue = errors.New("您已在排隊中，請回到原視窗")
+var (
+	ErrAlreadyInQueue = errors.New("您已在排隊中，請回到原視窗")
+	ErrNotAdmitted    = errors.New("尚未輪到您選位，請回到排隊頁面")
+)
 
 const (
 	BatchSize          = 50
 	MaxConcurrent      = 500
 	BatchIntervalS     = 5
 	EntryWindowSeconds = 60
+	SelectionSessionS  = 10 * 60
 )
 
 type QueueService struct {
@@ -61,7 +65,23 @@ func (s *QueueService) EstimateWait(position int64) string {
 }
 
 func (s *QueueService) AdmitNextBatch(ctx context.Context, eventID string) ([]string, error) {
-	tokens, err := s.redis.QueuePop(ctx, eventID, BatchSize)
+	if err := s.redis.PruneActiveSelections(ctx, eventID); err != nil {
+		return nil, err
+	}
+	active, err := s.redis.ActiveSelectionCount(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	availableSlots := int64(MaxConcurrent) - active
+	if availableSlots <= 0 {
+		return nil, nil
+	}
+	count := int64(BatchSize)
+	if availableSlots < count {
+		count = availableSlots
+	}
+
+	tokens, err := s.redis.QueuePop(ctx, eventID, count)
 	if err != nil {
 		return nil, err
 	}
@@ -76,8 +96,24 @@ func (s *QueueService) AdmitNextBatch(ctx context.Context, eventID string) ([]st
 	return tokens, nil
 }
 
-func (s *QueueService) IsAdmitted(ctx context.Context, eventID, userID string) (bool, error) {
-	return s.redis.HasQueueAdmission(ctx, eventID, userID)
+func (s *QueueService) EnterSelection(ctx context.Context, eventID, userID string) (time.Time, error) {
+	expiresAt := time.Now().Add(SelectionSessionS * time.Second)
+	ok, err := s.redis.StartSelectionSession(ctx, eventID, userID, SelectionSessionS*time.Second)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !ok {
+		return time.Time{}, ErrNotAdmitted
+	}
+	return expiresAt, nil
+}
+
+func (s *QueueService) IsSelectionActive(ctx context.Context, eventID, userID string) (bool, error) {
+	return s.redis.HasSelectionSession(ctx, eventID, userID)
+}
+
+func (s *QueueService) EndSelection(ctx context.Context, eventID, userID string) error {
+	return s.redis.EndSelectionSession(ctx, eventID, userID)
 }
 
 func (s *QueueService) ActiveEventIDs(ctx context.Context) ([]string, error) {

@@ -79,6 +79,11 @@ export const api = {
     }),
 
   // Seats (protected — routed through BFF proxy)
+  enterSelection: (eventId: string) =>
+    fetchProtectedAPI<{ expires_at: string }>(`/events/${eventId}/queue/enter`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   allocateSeats: (
     eventId: string,
     data: { section_id: string; quantity: number }
