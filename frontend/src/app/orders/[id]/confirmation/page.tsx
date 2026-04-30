@@ -49,6 +49,23 @@ export default function ConfirmationPage() {
   }
 
   const isConfirmed = order.status === "confirmed";
+  const isCancelled = order.status === "cancelled";
+  const statusColor = isConfirmed
+    ? "text-[var(--accent-teal)]"
+    : isCancelled
+      ? "text-[var(--status-red)]"
+      : "text-[var(--status-yellow)]";
+  const statusBorder = isConfirmed
+    ? "border-[var(--accent-teal)] bg-[#00D4AA22]"
+    : isCancelled
+      ? "border-[var(--status-red)] bg-[#ef444422]"
+      : "border-[var(--status-yellow)] bg-[#eab30822]";
+  const statusTitle = isConfirmed
+    ? "PAYMENT SUCCESSFUL"
+    : isCancelled
+      ? "PAYMENT CANCELLED"
+      : "PAYMENT PENDING";
+  const statusIcon = isConfirmed ? "✓" : isCancelled ? "✕" : "⏳";
 
   return (
     <div className="flex flex-col h-full">
@@ -56,20 +73,14 @@ export default function ConfirmationPage() {
       <main className="flex-1 flex flex-col items-center px-[200px] py-10 gap-8 overflow-auto">
         {/* Success icon */}
         <div
-          className={`w-24 h-24 rounded-full border-2 flex items-center justify-center ${
-            isConfirmed
-              ? "border-[var(--accent-teal)] bg-[#00D4AA22]"
-              : "border-[var(--status-yellow)] bg-[#eab30822]"
-          }`}
+          className={`w-24 h-24 rounded-full border-2 flex items-center justify-center ${statusBorder}`}
         >
-          <span className={`text-4xl ${isConfirmed ? "text-[var(--accent-teal)]" : "text-[var(--status-yellow)]"}`}>
-            {isConfirmed ? "✓" : "⏳"}
-          </span>
+          <span className={`text-4xl ${statusColor}`}>{statusIcon}</span>
         </div>
 
         <div className="text-center">
-          <h1 className={`font-display text-4xl font-bold ${isConfirmed ? "text-[var(--accent-teal)]" : "text-[var(--status-yellow)]"}`}>
-            {isConfirmed ? "PAYMENT SUCCESSFUL" : "PAYMENT PENDING"}
+          <h1 className={`font-display text-4xl font-bold ${statusColor}`}>
+            {statusTitle}
           </h1>
           <p className="font-mono text-[13px] text-[var(--text-secondary)] mt-2">
             // order_id: {order.id.slice(0, 8).toUpperCase()}

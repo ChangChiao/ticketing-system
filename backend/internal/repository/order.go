@@ -73,6 +73,22 @@ func (r *OrderRepository) UpdateStatus(ctx context.Context, id, status string) e
 	return err
 }
 
+func (r *OrderRepository) UpdateStatusIfCurrent(ctx context.Context, id, status string, currentStatuses []string) (bool, error) {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE orders
+		SET status = $1, updated_at = NOW()
+		WHERE id = $2 AND status = ANY($3)
+	`, status, id, pq.Array(currentStatuses))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
 func (r *OrderRepository) CreatePayment(ctx context.Context, payment *model.Payment) error {
 	_, err := r.db.NamedExecContext(ctx, `
 		INSERT INTO payments (id, order_id, transaction_id, method, amount, status, created_at)
@@ -142,6 +158,16 @@ func (r *OrderRepository) GetPendingOrdersNearExpiry(ctx context.Context) ([]mod
 		WHERE status = 'pending'
 		AND created_at <= NOW() - INTERVAL '7 minutes 30 seconds'
 		AND created_at > NOW() - INTERVAL '8 minutes 30 seconds'
+	`)
+	return orders, err
+}
+
+func (r *OrderRepository) GetExpiredPendingOrders(ctx context.Context) ([]model.Order, error) {
+	var orders []model.Order
+	err := r.db.SelectContext(ctx, &orders, `
+		SELECT * FROM orders
+		WHERE status = 'pending'
+		AND created_at <= NOW() - INTERVAL '10 minutes'
 	`)
 	return orders, err
 }

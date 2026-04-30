@@ -62,6 +62,7 @@ func main() {
 	if cfg.ServiceRole != "ws" {
 		// Start payment warning worker (10.3)
 		go orderSvc.StartPaymentWarningWorker(context.Background())
+		go orderSvc.StartPaymentTimeoutWorker(context.Background())
 		go seatSvc.StartExpiredLockCleanupWorker(context.Background())
 		go queueSvc.StartAdmissionWorker(context.Background(), func(eventID, userID string) {
 			wsHub.SendToUser(userID, ws.Message{

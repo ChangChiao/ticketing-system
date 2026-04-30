@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ticketing-system/backend/internal/middleware"
 	"github.com/ticketing-system/backend/internal/model"
 	"github.com/ticketing-system/backend/internal/repository"
 	pkgredis "github.com/ticketing-system/backend/pkg/redis"
@@ -45,6 +46,38 @@ func (s *OrderService) StartPaymentWarningWorker(ctx context.Context) {
 					OrderID: order.ID,
 					EventID: order.EventID,
 					Type:    "two_min_warning",
+				})
+			}
+		}
+	}
+}
+
+func (s *OrderService) StartPaymentTimeoutWorker(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			orders, err := s.repo.GetExpiredPendingOrders(ctx)
+			if err != nil {
+				log.Printf("payment timeout worker: %v", err)
+				continue
+			}
+			for _, order := range orders {
+				if err := s.CancelOrder(ctx, order.ID); err != nil {
+					log.Printf("payment timeout worker: cancel order %s: %v", order.ID, err)
+					continue
+				}
+				middleware.PaymentTotal.WithLabelValues("timeout").Inc()
+				middleware.ErrorsTotal.WithLabelValues("payment_timeout").Inc()
+				_ = s.redis.PublishPaymentWarning(ctx, pkgredis.PaymentWarningMessage{
+					UserID:  order.UserID,
+					OrderID: order.ID,
+					EventID: order.EventID,
+					Type:    "timeout",
 				})
 			}
 		}
@@ -205,6 +238,9 @@ func (s *OrderService) CancelOrder(ctx context.Context, orderID string) error {
 	if err != nil {
 		return err
 	}
+	if order.Status != "pending" {
+		return nil
+	}
 
 	items, err := s.repo.GetOrderItems(ctx, orderID)
 	if err != nil {
@@ -218,6 +254,9 @@ func (s *OrderService) CancelOrder(ctx context.Context, orderID string) error {
 	if err := s.seatSvc.ReleaseSeatsByEvent(ctx, order.EventID, seatIDs); err != nil {
 		return err
 	}
-
-	return s.repo.UpdateStatus(ctx, orderID, "cancelled")
+	_, err = s.repo.UpdateStatusIfCurrent(ctx, orderID, "cancelled", []string{"pending"})
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -254,12 +254,16 @@ func (h *Hub) SubscribeRedis(redisClient *pkgredis.Client) {
 				log.Printf("ws: failed to unmarshal payment warning: %v", err)
 				continue
 			}
+			message := "付款倒數剩餘 2 分鐘"
+			if warning.Type == "timeout" {
+				message = "付款逾時，座位已釋出"
+			}
 			h.SendToUser(warning.UserID, Message{
 				Type: "payment_warning",
 				Data: map[string]string{
 					"order_id": warning.OrderID,
 					"type":     warning.Type,
-					"message":  "付款倒數剩餘 2 分鐘",
+					"message":  message,
 				},
 			})
 		}

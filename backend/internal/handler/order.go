@@ -135,6 +135,8 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 	if expired {
 		log.Printf("Seat locks expired for order %s", orderID)
 		_ = h.svc.CancelOrder(c.Request.Context(), orderID)
+		middleware.PaymentTotal.WithLabelValues("timeout").Inc()
+		middleware.ErrorsTotal.WithLabelValues("payment_timeout").Inc()
 		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation?error=expired")
 		return
 	}

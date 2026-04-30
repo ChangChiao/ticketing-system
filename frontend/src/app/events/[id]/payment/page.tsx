@@ -48,6 +48,13 @@ export default function PaymentPage() {
           msg.data?.order_id === pendingOrderId
         ) {
           setWarning(msg.data.message || "付款期限即將到期");
+          if (msg.data.type === "timeout") {
+            setStatus("timeout");
+            setCountdown(0);
+            sessionStorage.removeItem("pending_order_id");
+            sessionStorage.removeItem("pending_payment_url");
+            return;
+          }
           setCountdown((current) => Math.min(current, 120));
         }
       } catch {

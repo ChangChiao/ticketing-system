@@ -278,7 +278,7 @@ type PaymentWarningMessage struct {
 	UserID  string `json:"user_id"`
 	OrderID string `json:"order_id"`
 	EventID string `json:"event_id"`
-	Type    string `json:"type"` // "two_min_warning"
+	Type    string `json:"type"` // "two_min_warning", "timeout"
 }
 
 func (c *Client) PublishPaymentWarning(ctx context.Context, msg PaymentWarningMessage) error {
