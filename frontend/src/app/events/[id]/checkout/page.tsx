@@ -66,14 +66,12 @@ export default function CheckoutPage() {
       });
 
       sessionStorage.setItem("pending_order_id", result.id);
+      if (result.payment_url) {
+        sessionStorage.setItem("pending_payment_url", result.payment_url);
+      }
       sessionStorage.removeItem("allocation");
 
-      // Redirect to LINE Pay payment page
-      if (result.payment_url) {
-        window.location.href = result.payment_url;
-      } else {
-        router.push(`/events/${eventId}/payment`);
-      }
+      router.push(`/events/${eventId}/payment`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "建立訂單失敗");
     } finally {

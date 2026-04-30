@@ -2,22 +2,65 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAuthStore } from "@/stores/auth";
+import { getWebSocketBaseURL } from "@/lib/ws";
 import Navbar from "@/components/Navbar";
 
 export default function PaymentPage() {
   const params = useParams();
   const router = useRouter();
   const eventId = params.id as string;
+  const token = useAuthStore((s) => s.token);
   const [status, setStatus] = useState<"redirecting" | "timeout" | "error">("redirecting");
   const [countdown, setCountdown] = useState(600); // 10 minutes
+  const [warning, setWarning] = useState("");
 
   useEffect(() => {
     const pendingOrderId = sessionStorage.getItem("pending_order_id");
+    const paymentUrl = sessionStorage.getItem("pending_payment_url");
     if (!pendingOrderId) {
       // No pending order — user landed here directly
       router.push(`/events/${eventId}/select`);
       return;
     }
+
+    if (paymentUrl) {
+      const redirect = setTimeout(() => {
+        window.location.href = paymentUrl;
+      }, 1200);
+      return () => clearTimeout(redirect);
+    }
+  }, [eventId, router]);
+
+  useEffect(() => {
+    const pendingOrderId = sessionStorage.getItem("pending_order_id");
+    if (!pendingOrderId || !token) return;
+
+    const wsBase = getWebSocketBaseURL();
+    const params = new URLSearchParams({ event_id: eventId, token });
+    const ws = new WebSocket(`${wsBase}/ws?${params.toString()}`);
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (
+          msg.type === "payment_warning" &&
+          msg.data?.order_id === pendingOrderId
+        ) {
+          setWarning(msg.data.message || "付款期限即將到期");
+          setCountdown((current) => Math.min(current, 120));
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    return () => ws.close();
+  }, [eventId, token]);
+
+  useEffect(() => {
+    const pendingOrderId = sessionStorage.getItem("pending_order_id");
+    if (!pendingOrderId) return;
 
     // Start countdown for the 10-minute payment window
     const timer = setInterval(() => {
@@ -26,6 +69,7 @@ export default function PaymentPage() {
           clearInterval(timer);
           setStatus("timeout");
           sessionStorage.removeItem("pending_order_id");
+          sessionStorage.removeItem("pending_payment_url");
           return 0;
         }
         return prev - 1;
@@ -33,7 +77,7 @@ export default function PaymentPage() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [eventId, router]);
+  }, []);
 
   const minutes = Math.floor(countdown / 60);
   const seconds = countdown % 60;
@@ -76,6 +120,14 @@ export default function PaymentPage() {
             // redirecting_to_line_pay
           </p>
         </div>
+
+        {warning && (
+          <div className="rounded-[var(--radius)] border border-[var(--status-red)] bg-[#ef444422] px-5 py-3">
+            <span className="font-mono text-sm font-semibold text-[var(--status-red)]">
+              {warning}
+            </span>
+          </div>
+        )}
 
         {/* Countdown */}
         <div
