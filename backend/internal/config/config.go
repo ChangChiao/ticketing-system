@@ -4,6 +4,7 @@ import "os"
 
 type Config struct {
 	Port          string
+	ServiceRole   string
 	DatabaseURL   string
 	RedisAddr     string
 	RedisPassword string
@@ -23,6 +24,7 @@ type Config struct {
 func Load() *Config {
 	return &Config{
 		Port:                 getEnv("PORT", "8080"),
+		ServiceRole:          getEnv("SERVICE_ROLE", "all"),
 		DatabaseURL:          getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/ticketing?sslmode=disable"),
 		RedisAddr:            getEnv("REDIS_ADDR", "localhost:6379"),
 		RedisPassword:        getEnv("REDIS_PASSWORD", ""),

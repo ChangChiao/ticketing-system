@@ -59,33 +59,35 @@ func main() {
 	go wsHub.Run()
 	wsHub.SubscribeRedis(redisClient)
 
-	// Start payment warning worker (10.3)
-	go orderSvc.StartPaymentWarningWorker(context.Background())
-	go seatSvc.StartExpiredLockCleanupWorker(context.Background())
-	go queueSvc.StartAdmissionWorker(context.Background(), func(eventID, userID string) {
-		wsHub.SendToUser(userID, ws.Message{
-			Type: "queue_update",
-			Data: gin.H{
-				"event_id":       eventID,
-				"position":       0,
-				"estimated_wait": "即將輪到您",
-				"status":         "your_turn",
-				"entry_window":   service.EntryWindowSeconds,
-			},
+	if cfg.ServiceRole != "ws" {
+		// Start payment warning worker (10.3)
+		go orderSvc.StartPaymentWarningWorker(context.Background())
+		go seatSvc.StartExpiredLockCleanupWorker(context.Background())
+		go queueSvc.StartAdmissionWorker(context.Background(), func(eventID, userID string) {
+			wsHub.SendToUser(userID, ws.Message{
+				Type: "queue_update",
+				Data: gin.H{
+					"event_id":       eventID,
+					"position":       0,
+					"estimated_wait": "即將輪到您",
+					"status":         "your_turn",
+					"entry_window":   service.EntryWindowSeconds,
+				},
+			})
 		})
-	})
-	go queueSvc.StartPositionUpdateWorker(context.Background(), func(eventID, userID string, position, total int64, estimatedWait string) {
-		wsHub.SendToUser(userID, ws.Message{
-			Type: "queue_update",
-			Data: gin.H{
-				"event_id":       eventID,
-				"position":       position,
-				"total_in_queue": total,
-				"estimated_wait": estimatedWait,
-				"status":         "waiting",
-			},
+		go queueSvc.StartPositionUpdateWorker(context.Background(), func(eventID, userID string, position, total int64, estimatedWait string) {
+			wsHub.SendToUser(userID, ws.Message{
+				Type: "queue_update",
+				Data: gin.H{
+					"event_id":       eventID,
+					"position":       position,
+					"total_in_queue": total,
+					"estimated_wait": estimatedWait,
+					"status":         "waiting",
+				},
+			})
 		})
-	})
+	}
 
 	// Handlers
 	eventHandler := handler.NewEventHandler(eventSvc)
