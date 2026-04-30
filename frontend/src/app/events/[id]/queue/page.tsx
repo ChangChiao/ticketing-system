@@ -16,6 +16,7 @@ export default function QueuePage() {
   const eventId = params.id as string;
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
+  const hydrated = useAuthStore((s) => s.hydrated);
 
   const [position, setPosition] = useState<number | null>(null);
   const [totalInQueue, setTotalInQueue] = useState(0);
@@ -60,6 +61,8 @@ export default function QueuePage() {
   }, [eventId, token]);
 
   useEffect(() => {
+    if (!hydrated) return;
+
     if (!token) {
       router.push("/auth");
       return;
@@ -69,7 +72,7 @@ export default function QueuePage() {
     if (!TURNSTILE_SITE_KEY) {
       joinQueue("");
     }
-  }, [token, router, joinQueue]);
+  }, [hydrated, token, router, joinQueue]);
 
   const handleCaptchaSuccess = (captcha: string) => {
     setCaptchaToken(captcha);
