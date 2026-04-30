@@ -12,6 +12,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
+	"github.com/ticketing-system/backend/internal/middleware"
 	pkgredis "github.com/ticketing-system/backend/pkg/redis"
 )
 
@@ -89,6 +90,7 @@ func (h *Hub) Run() {
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
+			middleware.ActiveWebSocketConnections.Inc()
 			for room := range client.rooms {
 				if h.rooms[room] == nil {
 					h.rooms[room] = make(map[*Client]bool)
@@ -101,6 +103,7 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
+				middleware.ActiveWebSocketConnections.Dec()
 				for room := range client.rooms {
 					delete(h.rooms[room], client)
 				}

@@ -2,8 +2,10 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ticketing-system/backend/internal/middleware"
 	"github.com/ticketing-system/backend/internal/service"
 )
 
@@ -31,8 +33,14 @@ func (h *SeatHandler) GetAvailability(c *gin.Context) {
 }
 
 func (h *SeatHandler) AllocateSeats(c *gin.Context) {
+	start := time.Now()
 	eventID := c.Param("id")
 	userID := c.GetString("user_id")
+	resultLabel := "error"
+	defer func() {
+		middleware.SeatAllocationAttempts.WithLabelValues(eventID, resultLabel).Inc()
+		middleware.SeatAllocationDuration.WithLabelValues(eventID).Observe(time.Since(start).Seconds())
+	}()
 
 	if h.queueSvc != nil {
 		active, err := h.queueSvc.IsSelectionActive(c.Request.Context(), eventID, userID)
@@ -41,6 +49,7 @@ func (h *SeatHandler) AllocateSeats(c *gin.Context) {
 			return
 		}
 		if !active {
+			resultLabel = "conflict"
 			c.JSON(http.StatusForbidden, gin.H{"error": "尚未輪到您選位，請回到排隊頁面"})
 			return
 		}
@@ -51,12 +60,14 @@ func (h *SeatHandler) AllocateSeats(c *gin.Context) {
 		Quantity  int    `json:"quantity" binding:"required,min=1,max=4"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		resultLabel = "error"
 		c.JSON(http.StatusBadRequest, gin.H{"error": "請選擇區域和張數 (1-4張)"})
 		return
 	}
 
 	result, err := h.svc.AllocateSeats(c.Request.Context(), eventID, req.SectionID, userID, req.Quantity)
 	if err != nil {
+		resultLabel = "conflict"
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}
@@ -64,5 +75,6 @@ func (h *SeatHandler) AllocateSeats(c *gin.Context) {
 		_ = h.queueSvc.EndSelection(c.Request.Context(), eventID, userID)
 	}
 
+	resultLabel = "success"
 	c.JSON(http.StatusOK, result)
 }

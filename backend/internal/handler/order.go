@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ticketing-system/backend/internal/middleware"
 	"github.com/ticketing-system/backend/internal/model"
 	"github.com/ticketing-system/backend/internal/service"
 	"github.com/ticketing-system/backend/pkg/linepay"
@@ -145,6 +146,8 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 	})
 	if err != nil {
 		log.Printf("LINE Pay confirm failed for order %s after retries: %v", orderID, err)
+		middleware.PaymentTotal.WithLabelValues("failed").Inc()
+		middleware.ErrorsTotal.WithLabelValues("line_pay_error").Inc()
 		// Mark as payment_pending for manual review
 		_ = h.svc.MarkPaymentPending(c.Request.Context(), orderID)
 		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation")
@@ -153,10 +156,14 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 
 	if err := h.svc.ConfirmOrder(c.Request.Context(), orderID, transactionID); err != nil {
 		log.Printf("Failed to confirm order %s: %v", orderID, err)
+		middleware.PaymentTotal.WithLabelValues("failed").Inc()
+		middleware.ErrorsTotal.WithLabelValues("confirm_failed").Inc()
 		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation?error=confirm_failed")
 		return
 	}
 
+	middleware.PaymentTotal.WithLabelValues("success").Inc()
+	middleware.TicketSalesRate.WithLabelValues(order.EventID).Inc()
 	c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation")
 }
 
@@ -179,6 +186,7 @@ func (h *OrderHandler) CancelPayment(c *gin.Context) {
 	if err := h.svc.CancelOrder(c.Request.Context(), orderID); err != nil {
 		log.Printf("Failed to cancel order %s: %v", orderID, err)
 	}
+	middleware.PaymentTotal.WithLabelValues("cancelled").Inc()
 
 	// Get event ID from order to redirect back to event
 	order, _, err := h.svc.GetOrder(c.Request.Context(), orderID)

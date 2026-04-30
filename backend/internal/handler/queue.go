@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/ticketing-system/backend/internal/middleware"
 	"github.com/ticketing-system/backend/internal/service"
 )
 
@@ -29,6 +30,7 @@ func (h *QueueHandler) JoinQueue(c *gin.Context) {
 		return
 	}
 	total, _ := h.svc.QueueSize(c.Request.Context(), eventID)
+	middleware.QueueDepth.WithLabelValues(eventID).Set(float64(total))
 
 	c.JSON(http.StatusOK, gin.H{
 		"position":       position,
@@ -47,6 +49,7 @@ func (h *QueueHandler) GetPosition(c *gin.Context) {
 		return
 	}
 	total, _ := h.svc.QueueSize(c.Request.Context(), eventID)
+	middleware.QueueDepth.WithLabelValues(eventID).Set(float64(total))
 
 	c.JSON(http.StatusOK, gin.H{
 		"position":       position,
