@@ -71,14 +71,19 @@ export default function OrdersPage() {
                 >
                   <div className="flex flex-col gap-2">
                     <span className="font-display text-base font-semibold">
-                      訂單 #{order.id.slice(0, 8).toUpperCase()}
+                      {order.event_title || `訂單 #${order.id.slice(0, 8).toUpperCase()}`}
                     </span>
                     <div className="flex gap-4">
                       <span className="font-mono text-[11px] text-[var(--text-secondary)]">
-                        {new Date(order.created_at).toLocaleDateString("zh-TW")}
+                        {order.event_date
+                          ? new Date(order.event_date).toLocaleDateString("zh-TW")
+                          : new Date(order.created_at).toLocaleDateString("zh-TW")}
                       </span>
                       <span className="font-mono text-[11px] text-[var(--text-secondary)]">
-                        tickets
+                        {order.venue_name || "venue"}
+                      </span>
+                      <span className="font-mono text-[11px] text-[var(--text-secondary)]">
+                        {order.ticket_count || 0} 張
                       </span>
                     </div>
                   </div>

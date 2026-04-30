@@ -73,14 +73,18 @@ type User struct {
 }
 
 type Order struct {
-	ID            string    `db:"id" json:"id"`
-	UserID        string    `db:"user_id" json:"user_id"`
-	EventID       string    `db:"event_id" json:"event_id"`
-	Status        string    `db:"status" json:"status"` // pending, confirmed, cancelled, payment_pending
-	Total         int       `db:"total" json:"total"`
-	CallbackToken string    `db:"callback_token" json:"-"` // not exposed in API responses
-	CreatedAt     time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at" json:"updated_at"`
+	ID            string     `db:"id" json:"id"`
+	UserID        string     `db:"user_id" json:"user_id"`
+	EventID       string     `db:"event_id" json:"event_id"`
+	Status        string     `db:"status" json:"status"` // pending, confirmed, cancelled, payment_pending
+	Total         int        `db:"total" json:"total"`
+	CallbackToken string     `db:"callback_token" json:"-"` // not exposed in API responses
+	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt     time.Time  `db:"updated_at" json:"updated_at"`
+	EventTitle    string     `db:"event_title" json:"event_title,omitempty"`
+	EventDate     *time.Time `db:"event_date" json:"event_date,omitempty"`
+	VenueName     string     `db:"venue_name" json:"venue_name,omitempty"`
+	TicketCount   int        `db:"ticket_count" json:"ticket_count,omitempty"`
 }
 
 type OrderItem struct {
@@ -94,13 +98,13 @@ type OrderItem struct {
 }
 
 type Payment struct {
-	ID            string    `db:"id" json:"id"`
-	OrderID       string    `db:"order_id" json:"order_id"`
-	TransactionID string    `db:"transaction_id" json:"transaction_id"`
-	Method        string    `db:"method" json:"method"` // linepay
-	Amount        int       `db:"amount" json:"amount"`
-	Status        string    `db:"status" json:"status"` // pending, confirmed, failed
-	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+	ID            string     `db:"id" json:"id"`
+	OrderID       string     `db:"order_id" json:"order_id"`
+	TransactionID string     `db:"transaction_id" json:"transaction_id"`
+	Method        string     `db:"method" json:"method"` // linepay
+	Amount        int        `db:"amount" json:"amount"`
+	Status        string     `db:"status" json:"status"` // pending, confirmed, failed
+	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
 	ConfirmedAt   *time.Time `db:"confirmed_at" json:"confirmed_at"`
 }
 
@@ -126,9 +130,9 @@ type EventDetail struct {
 
 type EventSectionDetail struct {
 	EventSection
-	SectionName string `json:"section_name"`
+	SectionName string          `json:"section_name"`
 	Polygon     json.RawMessage `json:"polygon"`
-	Remaining   int    `json:"remaining"`
+	Remaining   int             `json:"remaining"`
 }
 
 type SectionAvailability struct {

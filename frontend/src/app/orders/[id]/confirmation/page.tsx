@@ -92,9 +92,31 @@ export default function ConfirmationPage() {
           {/* Left - details */}
           <div className="flex-1 p-6 flex flex-col gap-4">
             <span className="font-display text-lg font-semibold">
-              訂單 #{order.id.slice(0, 8).toUpperCase()}
+              {order.event_title || `訂單 #${order.id.slice(0, 8).toUpperCase()}`}
             </span>
             <div className="flex flex-col gap-2.5">
+              {order.event_date && (
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] text-[var(--text-secondary)]">// date</span>
+                  <span className="font-mono text-xs font-semibold">
+                    {new Date(order.event_date).toLocaleString("zh-TW", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </span>
+                </div>
+              )}
+              {order.venue_name && (
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] text-[var(--text-secondary)]">// venue</span>
+                  <span className="font-mono text-xs font-semibold">
+                    {order.venue_name}
+                  </span>
+                </div>
+              )}
+              {(order.event_date || order.venue_name) && (
+                <div className="h-px bg-[var(--bg-elevated)] my-1" />
+              )}
               {items.map((item, i) => (
                 <div key={i} className="flex items-center justify-between">
                   <span className="font-mono text-[11px] text-[var(--text-secondary)]">// seat {i + 1}</span>

@@ -184,6 +184,10 @@ export interface Order {
   status: string;
   total: number;
   created_at: string;
+  event_title?: string;
+  event_date?: string;
+  venue_name?: string;
+  ticket_count?: number;
 }
 
 export interface OrderItem {

@@ -52,7 +52,23 @@ func (r *OrderRepository) GetByID(ctx context.Context, id string) (*model.Order,
 
 func (r *OrderRepository) GetByIDForUser(ctx context.Context, id, userID string) (*model.Order, error) {
 	var order model.Order
-	err := r.db.GetContext(ctx, &order, "SELECT * FROM orders WHERE id = $1 AND user_id = $2", id, userID)
+	err := r.db.GetContext(ctx, &order, `
+		SELECT
+			o.*,
+			e.title AS event_title,
+			e.event_date AS event_date,
+			v.name AS venue_name,
+			COALESCE(oi.ticket_count, 0) AS ticket_count
+		FROM orders o
+		JOIN events e ON e.id = o.event_id
+		JOIN venues v ON v.id = e.venue_id
+		LEFT JOIN (
+			SELECT order_id, COUNT(*)::int AS ticket_count
+			FROM order_items
+			GROUP BY order_id
+		) oi ON oi.order_id = o.id
+		WHERE o.id = $1 AND o.user_id = $2
+	`, id, userID)
 	return &order, err
 }
 
@@ -64,7 +80,24 @@ func (r *OrderRepository) GetOrderItems(ctx context.Context, orderID string) ([]
 
 func (r *OrderRepository) ListByUser(ctx context.Context, userID string) ([]model.Order, error) {
 	var orders []model.Order
-	err := r.db.SelectContext(ctx, &orders, "SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC", userID)
+	err := r.db.SelectContext(ctx, &orders, `
+		SELECT
+			o.*,
+			e.title AS event_title,
+			e.event_date AS event_date,
+			v.name AS venue_name,
+			COALESCE(oi.ticket_count, 0) AS ticket_count
+		FROM orders o
+		JOIN events e ON e.id = o.event_id
+		JOIN venues v ON v.id = e.venue_id
+		LEFT JOIN (
+			SELECT order_id, COUNT(*)::int AS ticket_count
+			FROM order_items
+			GROUP BY order_id
+		) oi ON oi.order_id = o.id
+		WHERE o.user_id = $1
+		ORDER BY o.created_at DESC
+	`, userID)
 	return orders, err
 }
 
