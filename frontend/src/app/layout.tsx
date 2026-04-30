@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import AuthBootstrap from "@/components/AuthBootstrap";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function RootLayout({
         />
       </head>
       <body className="h-full bg-[var(--bg-page)] text-[var(--text-primary)]">
+        <AuthBootstrap />
         {children}
       </body>
     </html>
