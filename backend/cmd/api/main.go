@@ -136,6 +136,7 @@ func main() {
 			protected.POST("/events/:id/queue/enter", queueHandler.EnterSelection)
 			protected.POST("/events/:id/allocate", seatHandler.AllocateSeats)
 			protected.POST("/orders", orderHandler.CreateOrder)
+			protected.POST("/orders/:id/payment", orderHandler.CreatePayment)
 			protected.GET("/orders", orderHandler.ListOrders)
 			protected.GET("/orders/:id", orderHandler.GetOrder)
 		}

@@ -21,6 +21,17 @@ func NewOrderHandler(svc *service.OrderService, linePayCli *linepay.Client) *Ord
 	return &OrderHandler{svc: svc, linePayCli: linePayCli}
 }
 
+func (h *OrderHandler) requestLinePay(order *model.Order) (*linepay.RequestPaymentOutput, error) {
+	return h.linePayCli.RequestPayment(linepay.RequestPaymentInput{
+		OrderID:       order.ID,
+		Amount:        order.Total,
+		ProductName:   "演唱會門票",
+		Quantity:      1,
+		Price:         order.Total,
+		CallbackToken: order.CallbackToken,
+	})
+}
+
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	userID := c.GetString("user_id")
 
@@ -44,24 +55,66 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	// Call LINE Pay Request API to get payment URL
-	paymentOutput, err := h.linePayCli.RequestPayment(linepay.RequestPaymentInput{
-		OrderID:       order.ID,
-		Amount:        order.Total,
-		ProductName:   "演唱會門票",
-		Quantity:      1,
-		Price:         order.Total,
-		CallbackToken: order.CallbackToken,
-	})
+	paymentOutput, err := h.requestLinePay(order)
 	if err != nil {
 		log.Printf("LINE Pay request failed for order %s: %v", order.ID, err)
-		// Cancel the order since payment cannot proceed
-		_ = h.svc.CancelOrder(c.Request.Context(), order.ID)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "付款服務暫時無法使用，請稍後再試"})
+		middleware.PaymentTotal.WithLabelValues("failed").Inc()
+		middleware.ErrorsTotal.WithLabelValues("line_pay_request_error").Inc()
+		c.JSON(http.StatusCreated, gin.H{
+			"id":            order.ID,
+			"status":        order.Status,
+			"total":         order.Total,
+			"payment_error": "付款服務暫時無法使用，請稍後再試",
+		})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
+		"id":             order.ID,
+		"status":         order.Status,
+		"total":          order.Total,
+		"payment_url":    paymentOutput.PaymentURL,
+		"transaction_id": paymentOutput.TransactionID,
+	})
+}
+
+func (h *OrderHandler) CreatePayment(c *gin.Context) {
+	orderID := c.Param("id")
+	userID := c.GetString("user_id")
+
+	order, _, err := h.svc.GetUserOrder(c.Request.Context(), orderID, userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "找不到此訂單"})
+		return
+	}
+	if order.Status != "pending" {
+		c.JSON(http.StatusConflict, gin.H{"error": "此訂單目前無法付款"})
+		return
+	}
+
+	expired, err := h.svc.AreSeatsExpired(c.Request.Context(), orderID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "無法確認座位保留狀態"})
+		return
+	}
+	if expired {
+		_ = h.svc.CancelOrder(c.Request.Context(), orderID)
+		middleware.PaymentTotal.WithLabelValues("timeout").Inc()
+		middleware.ErrorsTotal.WithLabelValues("payment_timeout").Inc()
+		c.JSON(http.StatusConflict, gin.H{"error": "付款逾時，座位已釋出"})
+		return
+	}
+
+	paymentOutput, err := h.requestLinePay(order)
+	if err != nil {
+		log.Printf("LINE Pay retry request failed for order %s: %v", order.ID, err)
+		middleware.PaymentTotal.WithLabelValues("failed").Inc()
+		middleware.ErrorsTotal.WithLabelValues("line_pay_request_error").Inc()
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "付款服務暫時無法使用，請稍後再試"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
 		"id":             order.ID,
 		"status":         order.Status,
 		"total":          order.Total,

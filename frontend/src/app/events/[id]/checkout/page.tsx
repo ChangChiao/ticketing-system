@@ -24,6 +24,7 @@ export default function CheckoutPage() {
   const [countdown, setCountdown] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("allocation");
@@ -32,6 +33,7 @@ export default function CheckoutPage() {
       return;
     }
     setAllocation(JSON.parse(stored));
+    setPendingOrderId(sessionStorage.getItem("pending_checkout_order_id"));
   }, [eventId, router]);
 
   useEffect(() => {
@@ -46,6 +48,8 @@ export default function CheckoutPage() {
       if (remaining === 0) {
         clearInterval(timer);
         sessionStorage.removeItem("allocation");
+        sessionStorage.removeItem("pending_checkout_order_id");
+        sessionStorage.removeItem("pending_order_id");
         router.push(`/events/${eventId}/select`);
       }
     }, 1000);
@@ -59,16 +63,25 @@ export default function CheckoutPage() {
     setError("");
 
     try {
-      const result = await api.createOrder({
-        event_id: allocation.event_id,
-        seats: allocation.seats,
-        price_per_seat: allocation.price_per_seat,
-      });
+      const result = pendingOrderId
+        ? await api.createPayment(pendingOrderId)
+        : await api.createOrder({
+            event_id: allocation.event_id,
+            seats: allocation.seats,
+            price_per_seat: allocation.price_per_seat,
+          });
 
       sessionStorage.setItem("pending_order_id", result.id);
+      sessionStorage.setItem("pending_checkout_order_id", result.id);
+      setPendingOrderId(result.id);
+      if (!result.payment_url) {
+        setError(result.payment_error || "付款服務暫時無法使用，請稍後再試");
+        return;
+      }
       if (result.payment_url) {
         sessionStorage.setItem("pending_payment_url", result.payment_url);
       }
+      sessionStorage.removeItem("pending_checkout_order_id");
       sessionStorage.removeItem("allocation");
 
       router.push(`/events/${eventId}/payment`);

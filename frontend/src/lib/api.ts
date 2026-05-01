@@ -103,6 +103,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  createPayment: (orderId: string) =>
+    fetchProtectedAPI<CreateOrderResponse>(`/orders/${orderId}/payment`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   listOrders: () => fetchProtectedAPI<{ orders: Order[] }>("/orders"),
   getOrder: (id: string) =>
     fetchProtectedAPI<{ order: Order; items: OrderItem[] }>(`/orders/${id}`),
@@ -174,8 +179,9 @@ export interface CreateOrderResponse {
   id: string;
   status: string;
   total: number;
-  payment_url: string;
-  transaction_id: number;
+  payment_url?: string;
+  payment_error?: string;
+  transaction_id?: number;
 }
 
 export interface Order {
