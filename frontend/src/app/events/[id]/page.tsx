@@ -34,6 +34,9 @@ export default function EventDetailPage() {
       if (diff <= 0) {
         setShowCountdown(false);
         clearInterval(timer);
+        if (event.sale_status !== "已售完" && event.sale_status !== "已結束" && event.status !== "ended") {
+          router.push(`/events/${eventId}/queue`);
+        }
         return;
       }
       setShowCountdown(true);
@@ -43,7 +46,7 @@ export default function EventDetailPage() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [event]);
+  }, [event, eventId, router]);
 
   if (loading) {
     return (
