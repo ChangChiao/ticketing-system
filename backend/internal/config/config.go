@@ -19,6 +19,7 @@ type Config struct {
 	// Security
 	TurnstileSecretKey string // Cloudflare Turnstile CAPTCHA
 	RequestSignSecret  string // HMAC request signature secret
+	AdminToken         string // Token for protected operational endpoints
 }
 
 func Load() *Config {
@@ -35,6 +36,7 @@ func Load() *Config {
 		AppBaseURL:           getEnv("APP_BASE_URL", "http://localhost:3000"),
 		TurnstileSecretKey:   getEnv("TURNSTILE_SECRET_KEY", ""),
 		RequestSignSecret:    getEnv("REQUEST_SIGN_SECRET", ""),
+		AdminToken:           getEnv("ADMIN_TOKEN", ""),
 	}
 }
 

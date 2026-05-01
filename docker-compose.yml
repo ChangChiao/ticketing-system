@@ -55,6 +55,7 @@ services:
       APP_BASE_URL: ${APP_BASE_URL}
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY}
       REQUEST_SIGN_SECRET: ${REQUEST_SIGN_SECRET}
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
     depends_on:
       migrate:
         condition: service_completed_successfully

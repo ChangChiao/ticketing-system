@@ -96,6 +96,7 @@ func main() {
 	orderHandler := handler.NewOrderHandler(orderSvc, linePayCli, queueSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
 	queueHandler := handler.NewQueueHandler(queueSvc)
+	adminHandler := handler.NewAdminHandler(orderSvc)
 
 	// Router
 	r := gin.Default()
@@ -118,6 +119,14 @@ func main() {
 		// Payment callbacks (no auth, verified by transaction)
 		api.GET("/payments/confirm", orderHandler.ConfirmPayment)
 		api.GET("/payments/cancel", orderHandler.CancelPayment)
+
+		admin := api.Group("/admin")
+		admin.Use(middleware.AdminToken(cfg.AdminToken))
+		{
+			admin.GET("/orders/payment-pending", adminHandler.ListPaymentPendingOrders)
+			admin.POST("/orders/:id/confirm", adminHandler.ConfirmPaymentPendingOrder)
+			admin.POST("/orders/:id/cancel", adminHandler.CancelPaymentPendingOrder)
+		}
 
 		// Protected routes
 		protected := api.Group("")

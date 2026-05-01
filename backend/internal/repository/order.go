@@ -101,6 +101,29 @@ func (r *OrderRepository) ListByUser(ctx context.Context, userID string) ([]mode
 	return orders, err
 }
 
+func (r *OrderRepository) ListByStatus(ctx context.Context, status string) ([]model.Order, error) {
+	var orders []model.Order
+	err := r.db.SelectContext(ctx, &orders, `
+		SELECT
+			o.*,
+			e.title AS event_title,
+			e.event_date AS event_date,
+			v.name AS venue_name,
+			COALESCE(oi.ticket_count, 0) AS ticket_count
+		FROM orders o
+		JOIN events e ON e.id = o.event_id
+		JOIN venues v ON v.id = e.venue_id
+		LEFT JOIN (
+			SELECT order_id, COUNT(*)::int AS ticket_count
+			FROM order_items
+			GROUP BY order_id
+		) oi ON oi.order_id = o.id
+		WHERE o.status = $1
+		ORDER BY o.created_at ASC
+	`, status)
+	return orders, err
+}
+
 func (r *OrderRepository) UpdateStatus(ctx context.Context, id, status string) error {
 	_, err := r.db.ExecContext(ctx, "UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2", status, id)
 	return err

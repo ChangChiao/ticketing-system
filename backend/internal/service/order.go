@@ -169,6 +169,10 @@ func (s *OrderService) ListOrders(ctx context.Context, userID string) ([]model.O
 	return s.repo.ListByUser(ctx, userID)
 }
 
+func (s *OrderService) ListPaymentPendingOrders(ctx context.Context) ([]model.Order, error) {
+	return s.repo.ListByStatus(ctx, "payment_pending")
+}
+
 func (s *OrderService) ConfirmOrder(ctx context.Context, orderID, transactionID string) error {
 	order, err := s.repo.GetByID(ctx, orderID)
 	if err != nil {
@@ -238,7 +242,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, orderID string) error {
 	if err != nil {
 		return err
 	}
-	if order.Status != "pending" {
+	if order.Status != "pending" && order.Status != "payment_pending" {
 		return nil
 	}
 
@@ -254,7 +258,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, orderID string) error {
 	if err := s.seatSvc.ReleaseSeatsByEvent(ctx, order.EventID, seatIDs); err != nil {
 		return err
 	}
-	_, err = s.repo.UpdateStatusIfCurrent(ctx, orderID, "cancelled", []string{"pending"})
+	_, err = s.repo.UpdateStatusIfCurrent(ctx, orderID, "cancelled", []string{"pending", "payment_pending"})
 	if err != nil {
 		return err
 	}

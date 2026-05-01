@@ -72,6 +72,11 @@ spec:
                 secretKeyRef:
                   name: ticketing-secrets
                   key: request-sign-secret
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ticketing-secrets
+                  key: admin-token
           resources:
             requests:
               cpu: "250m"
