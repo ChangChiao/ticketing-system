@@ -201,6 +201,61 @@ func (c *Client) ConfirmPayment(input ConfirmPaymentInput) error {
 	return nil
 }
 
+func (c *Client) VoidPaymentWithRetry(transactionID string) error {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		lastErr = c.VoidPayment(transactionID)
+		if lastErr == nil {
+			return nil
+		}
+		backoff := time.Duration(1<<uint(attempt)) * time.Second
+		time.Sleep(backoff)
+	}
+	return fmt.Errorf("LINE Pay void failed after 3 retries: %w", lastErr)
+}
+
+func (c *Client) VoidPayment(transactionID string) error {
+	path := fmt.Sprintf("/v3/payments/authorizations/%s/void", transactionID)
+	nonce := uuid.New().String()
+
+	req, err := http.NewRequest("POST", c.baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+
+	signature := c.sign(c.channelSecret, path, "", nonce)
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-LINE-ChannelId", c.channelID)
+	req.Header.Set("X-LINE-Authorization-Nonce", nonce)
+	req.Header.Set("X-LINE-Authorization", signature)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	var result struct {
+		ReturnCode    string `json:"returnCode"`
+		ReturnMessage string `json:"returnMessage"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return err
+	}
+
+	if result.ReturnCode != "0000" && result.ReturnCode != "1165" {
+		return fmt.Errorf("LINE Pay void error: %s - %s", result.ReturnCode, result.ReturnMessage)
+	}
+
+	return nil
+}
+
 func (c *Client) sign(secret, path, body, nonce string) string {
 	message := secret + path + body + nonce
 	mac := hmac.New(sha256.New, []byte(secret))

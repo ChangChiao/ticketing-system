@@ -192,6 +192,10 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 	}
 	if expired {
 		log.Printf("Seat locks expired for order %s", orderID)
+		if err := h.linePayCli.VoidPaymentWithRetry(transactionID); err != nil {
+			log.Printf("LINE Pay void failed for expired order %s transaction %s: %v", orderID, transactionID, err)
+			middleware.ErrorsTotal.WithLabelValues("line_pay_void_error").Inc()
+		}
 		_ = h.svc.CancelOrder(c.Request.Context(), orderID)
 		h.restoreSelection(c, order.EventID, order.UserID)
 		middleware.PaymentTotal.WithLabelValues("timeout").Inc()

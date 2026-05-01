@@ -139,6 +139,51 @@ func TestConfirmPayment_Failure(t *testing.T) {
 	}
 }
 
+func TestVoidPayment_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		expectedPath := "/v3/payments/authorizations/tx-void/void"
+		if r.URL.Path != expectedPath {
+			t.Errorf("expected path %s, got %s", expectedPath, r.URL.Path)
+		}
+		if r.Header.Get("X-LINE-Authorization") == "" {
+			t.Error("missing X-LINE-Authorization")
+		}
+
+		resp := map[string]interface{}{
+			"returnCode":    "0000",
+			"returnMessage": "Success.",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient("test-channel", "test-secret", server.URL, "http://localhost:3000")
+	if err := client.VoidPayment("tx-void"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestVoidPayment_AlreadyVoidedIsSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"returnCode":    "1165",
+			"returnMessage": "A transaction has already been voided.",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewClient("test-channel", "test-secret", server.URL, "http://localhost:3000")
+	if err := client.VoidPayment("tx-voided"); err != nil {
+		t.Fatalf("expected already-voided response to be idempotent success, got: %v", err)
+	}
+}
+
 func TestConfirmPaymentWithRetry_EventualSuccess(t *testing.T) {
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
