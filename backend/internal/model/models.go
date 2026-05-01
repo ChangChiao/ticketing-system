@@ -126,6 +126,7 @@ type EventDetail struct {
 	VenueName  string               `json:"venue_name"`
 	LayoutData json.RawMessage      `json:"layout_data"`
 	Sections   []EventSectionDetail `json:"sections"`
+	SaleStatus string               `json:"sale_status"`
 }
 
 type EventSectionDetail struct {

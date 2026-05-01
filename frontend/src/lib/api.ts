@@ -126,6 +126,7 @@ export interface EventDetail {
   event_date: string;
   sale_start: string;
   sale_end: string;
+  sale_status: string;
   status: string;
   venue_name: string;
   layout_data: unknown;

@@ -68,6 +68,9 @@ export default function EventDetailPage() {
   }
 
   const isSaleStarted = new Date(event.sale_start).getTime() <= Date.now();
+  const isSoldOut = event.sale_status === "已售完";
+  const isEnded = event.sale_status === "已結束" || event.status === "ended";
+  const canBuy = isSaleStarted && !isSoldOut && !isEnded;
 
   function getSectionDotColor(section: { remaining: number; quota: number }) {
     if (section.remaining === 0) return "bg-[var(--status-grey)]";
@@ -180,14 +183,14 @@ export default function EventDetailPage() {
           {/* Buy button */}
           <button
             onClick={() => router.push(`/events/${eventId}/queue`)}
-            disabled={!isSaleStarted}
+            disabled={!canBuy}
             className={`w-full h-[52px] rounded-[var(--radius)] font-display text-lg font-semibold tracking-wide transition flex items-center justify-center gap-2 ${
-              isSaleStarted
+              canBuy
                 ? "bg-[var(--accent-orange)] text-[var(--text-on-accent)] hover:brightness-110"
                 : "bg-[var(--bg-placeholder)] text-[var(--text-secondary)] cursor-not-allowed"
             }`}
           >
-            {isSaleStarted ? "立即購票" : "尚未開賣"}
+            {canBuy ? "立即購票" : isSoldOut ? "已售完" : isEnded ? "已結束" : "尚未開賣"}
           </button>
           <p className="font-mono text-[11px] text-[var(--text-secondary)] text-center">
             // max 4 tickets per transaction
