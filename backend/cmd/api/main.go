@@ -93,7 +93,7 @@ func main() {
 	// Handlers
 	eventHandler := handler.NewEventHandler(eventSvc)
 	seatHandler := handler.NewSeatHandler(seatSvc, queueSvc)
-	orderHandler := handler.NewOrderHandler(orderSvc, linePayCli)
+	orderHandler := handler.NewOrderHandler(orderSvc, linePayCli, queueSvc)
 	authHandler := handler.NewAuthHandler(authSvc)
 	queueHandler := handler.NewQueueHandler(queueSvc)
 

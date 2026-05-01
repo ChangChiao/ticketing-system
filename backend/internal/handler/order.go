@@ -15,10 +15,15 @@ import (
 type OrderHandler struct {
 	svc        *service.OrderService
 	linePayCli *linepay.Client
+	queueSvc   *service.QueueService
 }
 
-func NewOrderHandler(svc *service.OrderService, linePayCli *linepay.Client) *OrderHandler {
-	return &OrderHandler{svc: svc, linePayCli: linePayCli}
+func NewOrderHandler(svc *service.OrderService, linePayCli *linepay.Client, queueSvc ...*service.QueueService) *OrderHandler {
+	h := &OrderHandler{svc: svc, linePayCli: linePayCli}
+	if len(queueSvc) > 0 {
+		h.queueSvc = queueSvc[0]
+	}
+	return h
 }
 
 func (h *OrderHandler) requestLinePay(order *model.Order) (*linepay.RequestPaymentOutput, error) {
@@ -188,9 +193,10 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 	if expired {
 		log.Printf("Seat locks expired for order %s", orderID)
 		_ = h.svc.CancelOrder(c.Request.Context(), orderID)
+		h.restoreSelection(c, order.EventID, order.UserID)
 		middleware.PaymentTotal.WithLabelValues("timeout").Inc()
 		middleware.ErrorsTotal.WithLabelValues("payment_timeout").Inc()
-		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation?error=expired")
+		c.Redirect(http.StatusFound, "/events/"+order.EventID+"/select?error=expired")
 		return
 	}
 
@@ -246,8 +252,18 @@ func (h *OrderHandler) CancelPayment(c *gin.Context) {
 	// Get event ID from order to redirect back to event
 	order, _, err := h.svc.GetOrder(c.Request.Context(), orderID)
 	if err == nil {
-		c.Redirect(http.StatusFound, "/events/"+order.EventID+"/select")
+		h.restoreSelection(c, order.EventID, order.UserID)
+		c.Redirect(http.StatusFound, "/events/"+order.EventID+"/select?error=payment_cancelled")
 		return
 	}
 	c.Redirect(http.StatusFound, "/events")
+}
+
+func (h *OrderHandler) restoreSelection(c *gin.Context, eventID, userID string) {
+	if h.queueSvc == nil {
+		return
+	}
+	if err := h.queueSvc.RestoreSelection(c.Request.Context(), eventID, userID); err != nil {
+		log.Printf("Failed to restore selection session for user %s event %s: %v", userID, eventID, err)
+	}
 }

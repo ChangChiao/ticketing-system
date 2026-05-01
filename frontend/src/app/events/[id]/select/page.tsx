@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { api, type EventDetail, type AllocatedSeats } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { getWebSocketBaseURL } from "@/lib/ws";
@@ -11,6 +11,7 @@ import Navbar from "@/components/Navbar";
 export default function SelectPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const eventId = params.id as string;
 
   const [event, setEvent] = useState<EventDetail | null>(null);
@@ -36,6 +37,15 @@ export default function SelectPage() {
       };
     });
   }, []);
+
+  useEffect(() => {
+    const urlError = searchParams.get("error");
+    if (urlError === "expired") {
+      setError("付款逾時，座位已釋出，請重新選位");
+    } else if (urlError === "payment_cancelled") {
+      setError("付款已取消，請重新選位");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     api

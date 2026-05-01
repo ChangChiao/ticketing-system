@@ -116,6 +116,10 @@ func (s *QueueService) EndSelection(ctx context.Context, eventID, userID string)
 	return s.redis.EndSelectionSession(ctx, eventID, userID)
 }
 
+func (s *QueueService) RestoreSelection(ctx context.Context, eventID, userID string) error {
+	return s.redis.RestoreSelectionSession(ctx, eventID, userID, SelectionSessionS*time.Second)
+}
+
 func (s *QueueService) ActiveEventIDs(ctx context.Context) ([]string, error) {
 	return s.redis.QueueEventIDs(ctx)
 }

@@ -200,6 +200,18 @@ func (c *Client) StartSelectionSession(ctx context.Context, eventID, userID stri
 	return result == 1, nil
 }
 
+func (c *Client) RestoreSelectionSession(ctx context.Context, eventID, userID string, ttl time.Duration) error {
+	sessionKey := fmt.Sprintf("selection_session:%s:%s", eventID, userID)
+	activeKey := fmt.Sprintf("active_selection:%s", eventID)
+	expiresAt := time.Now().Add(ttl).Unix()
+
+	pipe := c.rdb.TxPipeline()
+	pipe.Set(ctx, sessionKey, "1", ttl)
+	pipe.ZAdd(ctx, activeKey, goredis.Z{Score: float64(expiresAt), Member: userID})
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 func (c *Client) HasSelectionSession(ctx context.Context, eventID, userID string) (bool, error) {
 	key := fmt.Sprintf("selection_session:%s:%s", eventID, userID)
 	result, err := c.rdb.Exists(ctx, key).Result()
