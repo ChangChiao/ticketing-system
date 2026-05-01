@@ -56,7 +56,8 @@ spec:
                   number: 3000
 ---
 # Cloudflare CDN & DDoS protection configuration reference
-# Apply these settings in Cloudflare Dashboard or via Cloudflare API:
+# Apply these settings with scripts/configure_cloudflare.py or manually in the
+# Cloudflare Dashboard.
 #
 # 1. DNS: Proxy enabled (orange cloud) for tickets.example.com
 #
