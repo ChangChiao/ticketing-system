@@ -117,6 +117,7 @@ export const api = {
 export interface EventItem {
   id: string;
   title: string;
+  description: string;
   event_date: string;
   venue_name: string;
   price_range: string;
@@ -128,6 +129,7 @@ export interface EventItem {
 export interface EventDetail {
   id: string;
   title: string;
+  description: string;
   event_date: string;
   sale_start: string;
   sale_end: string;

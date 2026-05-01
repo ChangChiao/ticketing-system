@@ -56,10 +56,11 @@ BEGIN
 END $$;
 
 -- Sample Event: 五月天 2026 演唱會
-INSERT INTO events (id, venue_id, title, event_date, sale_start, sale_end, status, image_url) VALUES (
+INSERT INTO events (id, venue_id, title, description, event_date, sale_start, sale_end, status, image_url) VALUES (
     'e0000000-0000-0000-0000-000000000001',
     'a0000000-0000-0000-0000-000000000001',
     '五月天 2026 NO WHERE 巡迴演唱會',
+    '五月天年度大型巡迴演唱會台北場，於台北大巨蛋登場。請依票面時間入場，並於付款期限內完成交易。',
     '2026-06-15 19:00:00+08',
     '2026-04-01 12:00:00+08',
     '2026-06-15 18:00:00+08',

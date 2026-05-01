@@ -105,7 +105,7 @@ export default function EventDetailPage() {
               [EVENT_INFO]
             </span>
             <p className="font-mono text-[13px] text-[var(--text-secondary)] leading-relaxed">
-              {(event as EventDetail & { description?: string }).description || "活動詳細資訊"}
+              {event.description || "活動詳細資訊"}
             </p>
           </div>
 

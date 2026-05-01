@@ -36,15 +36,16 @@ type Seat struct {
 }
 
 type Event struct {
-	ID        string    `db:"id" json:"id"`
-	VenueID   string    `db:"venue_id" json:"venue_id"`
-	Title     string    `db:"title" json:"title"`
-	EventDate time.Time `db:"event_date" json:"event_date"`
-	SaleStart time.Time `db:"sale_start" json:"sale_start"`
-	SaleEnd   time.Time `db:"sale_end" json:"sale_end"`
-	Status    string    `db:"status" json:"status"` // draft, on_sale, sold_out, ended
-	ImageURL  string    `db:"image_url" json:"image_url"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	ID          string    `db:"id" json:"id"`
+	VenueID     string    `db:"venue_id" json:"venue_id"`
+	Title       string    `db:"title" json:"title"`
+	Description string    `db:"description" json:"description"`
+	EventDate   time.Time `db:"event_date" json:"event_date"`
+	SaleStart   time.Time `db:"sale_start" json:"sale_start"`
+	SaleEnd     time.Time `db:"sale_end" json:"sale_end"`
+	Status      string    `db:"status" json:"status"` // draft, on_sale, sold_out, ended
+	ImageURL    string    `db:"image_url" json:"image_url"`
+	CreatedAt   time.Time `db:"created_at" json:"created_at"`
 }
 
 type EventSection struct {
