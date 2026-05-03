@@ -2,11 +2,16 @@ package handler
 
 import (
 	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -28,6 +33,9 @@ type testEnv struct {
 	rdb    *goredis.Client
 	token  string // JWT for test user
 	userID string
+	queue  *service.QueueService
+	secret string
+	close  func()
 }
 
 func setupTestEnv(t *testing.T) *testEnv {
@@ -64,17 +72,42 @@ func setupTestEnv(t *testing.T) *testEnv {
 	authSvc := service.NewAuthService(userRepo, jwtSecret)
 	queueSvc := service.NewQueueService(redisClient)
 
-	linePayCli := linepay.NewClient("", "", "https://sandbox-api-pay.line.me", "http://localhost:3000")
+	linePayServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/v3/payments/request":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"returnCode":    "0000",
+				"returnMessage": "Success.",
+				"info": map[string]interface{}{
+					"paymentUrl": map[string]string{
+						"web": "https://sandbox-web-pay.line.me/web/payment/wait?transactionReserveId=test",
+					},
+					"transactionId": 424242,
+				},
+			})
+		case r.URL.Path == "/v3/payments/424242/confirm":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"returnCode":    "0000",
+				"returnMessage": "Success.",
+			})
+		default:
+			t.Fatalf("unexpected LINE Pay mock path: %s", r.URL.Path)
+		}
+	}))
+
+	linePayCli := linepay.NewClient("test-channel", "test-secret", linePayServer.URL, "http://localhost:3000")
 
 	// Handlers
 	eventHandler := NewEventHandler(eventSvc)
-	seatHandler := NewSeatHandler(seatSvc)
+	seatHandler := NewSeatHandler(seatSvc, queueSvc)
 	orderHandler := NewOrderHandler(orderSvc, linePayCli)
 	authHandler := NewAuthHandler(authSvc)
 	queueHandler := NewQueueHandler(queueSvc)
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
+	requestSignSecret := "test-request-secret"
 	api := r.Group("/api")
 	{
 		api.POST("/auth/register", authHandler.Register)
@@ -87,17 +120,28 @@ func setupTestEnv(t *testing.T) *testEnv {
 
 		protected := api.Group("")
 		protected.Use(middleware.Auth(jwtSecret))
+		protected.Use(middleware.RequestSignature(requestSignSecret))
 		{
 			protected.POST("/events/:id/queue/join", queueHandler.JoinQueue)
 			protected.GET("/events/:id/queue/position", queueHandler.GetPosition)
+			protected.POST("/events/:id/queue/enter", queueHandler.EnterSelection)
 			protected.POST("/events/:id/allocate", seatHandler.AllocateSeats)
+			protected.POST("/events/:id/allocation/release", seatHandler.ReleaseAllocation)
 			protected.POST("/orders", orderHandler.CreateOrder)
+			protected.POST("/orders/:id/cancel", orderHandler.CancelOrder)
 			protected.GET("/orders", orderHandler.ListOrders)
 			protected.GET("/orders/:id", orderHandler.GetOrder)
 		}
 	}
 
-	env := &testEnv{router: r, db: db, rdb: rdb}
+	env := &testEnv{
+		router: r,
+		db:     db,
+		rdb:    rdb,
+		queue:  queueSvc,
+		secret: requestSignSecret,
+		close:  linePayServer.Close,
+	}
 
 	// Register a test user
 	email := fmt.Sprintf("test_%d@example.com", time.Now().UnixNano())
@@ -116,8 +160,10 @@ func setupTestEnv(t *testing.T) *testEnv {
 	}
 
 	var authResp struct {
-		User  struct{ ID string `json:"id"` } `json:"user"`
-		Token string                           `json:"token"`
+		User struct {
+			ID string `json:"id"`
+		} `json:"user"`
+		Token string `json:"token"`
 	}
 	json.Unmarshal(w.Body.Bytes(), &authResp)
 	env.token = authResp.Token
@@ -138,8 +184,17 @@ func (e *testEnv) authRequest(method, path string, body interface{}) *httptest.R
 	req := httptest.NewRequest(method, path, reqBody)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+e.token)
+	e.sign(req, method, path)
 	e.router.ServeHTTP(w, req)
 	return w
+}
+
+func (e *testEnv) sign(req *http.Request, method, path string) {
+	ts := strconv.FormatInt(time.Now().UnixMilli(), 10)
+	mac := hmac.New(sha256.New, []byte(e.secret))
+	mac.Write([]byte(method + path + ts))
+	req.Header.Set("X-Request-Timestamp", ts)
+	req.Header.Set("X-Request-Signature", hex.EncodeToString(mac.Sum(nil)))
 }
 
 func (e *testEnv) publicRequest(method, path string) *httptest.ResponseRecorder {
@@ -155,6 +210,7 @@ func TestFullFlow_QueueToPayment(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.db.Close()
 	defer env.rdb.FlushDB(nil)
+	defer env.close()
 
 	// 1. List events
 	w := env.publicRequest("GET", "/api/events")
@@ -220,7 +276,21 @@ func TestFullFlow_QueueToPayment(t *testing.T) {
 		t.Fatalf("get position failed: %d", w.Code)
 	}
 
-	// 6. Allocate seats
+	// 6. Admit from queue and enter selection before allocation
+	admitted, err := env.queue.AdmitNextBatch(context.Background(), eventID)
+	if err != nil {
+		t.Fatalf("admit queue failed: %v", err)
+	}
+	if len(admitted) == 0 {
+		t.Fatal("expected user to be admitted from queue")
+	}
+
+	w = env.authRequest("POST", "/api/events/"+eventID+"/queue/enter", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("enter selection failed: %d %s", w.Code, w.Body.String())
+	}
+
+	// 7. Allocate seats
 	w = env.authRequest("POST", "/api/events/"+eventID+"/allocate", map[string]interface{}{
 		"section_id": sectionID,
 		"quantity":   2,
@@ -246,7 +316,7 @@ func TestFullFlow_QueueToPayment(t *testing.T) {
 		allocResp.Seats[0].SectionName, allocResp.Seats[0].RowLabel,
 		allocResp.Seats[0].SeatNumber, allocResp.Seats[1].SeatNumber)
 
-	// 7. Create order (LINE Pay will fail in test, but order should be created)
+	// 8. Create order and request LINE Pay payment
 	seats := make([]map[string]interface{}, len(allocResp.Seats))
 	for i, s := range allocResp.Seats {
 		seats[i] = map[string]interface{}{
@@ -261,10 +331,45 @@ func TestFullFlow_QueueToPayment(t *testing.T) {
 		"seats":          seats,
 		"price_per_seat": 2800,
 	})
-	// May fail due to LINE Pay not configured in test, which is expected
-	t.Logf("Create order response: %d %s", w.Code, w.Body.String())
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create order failed: %d %s", w.Code, w.Body.String())
+	}
+	var orderResp struct {
+		ID            string `json:"id"`
+		PaymentURL    string `json:"payment_url"`
+		TransactionID int64  `json:"transaction_id"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &orderResp)
+	if orderResp.ID == "" || orderResp.PaymentURL == "" || orderResp.TransactionID != 424242 {
+		t.Fatalf("unexpected order/payment response: %+v", orderResp)
+	}
 
-	// 8. List orders
+	// 9. Confirm LINE Pay callback and verify order status
+	var callbackToken string
+	if err := env.db.Get(&callbackToken, "SELECT callback_token FROM orders WHERE id = $1", orderResp.ID); err != nil {
+		t.Fatalf("read callback token failed: %v", err)
+	}
+
+	w = env.publicRequest("GET", "/api/payments/confirm?transactionId=424242&orderId="+orderResp.ID+"&token="+callbackToken)
+	if w.Code != http.StatusFound {
+		t.Fatalf("confirm payment failed: %d %s", w.Code, w.Body.String())
+	}
+
+	w = env.authRequest("GET", "/api/orders/"+orderResp.ID, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get confirmed order failed: %d %s", w.Code, w.Body.String())
+	}
+	var confirmedResp struct {
+		Order struct {
+			Status string `json:"status"`
+		} `json:"order"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &confirmedResp)
+	if confirmedResp.Order.Status != "confirmed" {
+		t.Fatalf("expected confirmed order, got %q", confirmedResp.Order.Status)
+	}
+
+	// 10. List orders
 	w = env.authRequest("GET", "/api/orders", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("list orders failed: %d", w.Code)
@@ -276,10 +381,13 @@ func TestQueueSingleSession(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.db.Close()
 	defer env.rdb.FlushDB(nil)
+	defer env.close()
 
 	w := env.publicRequest("GET", "/api/events")
 	var eventsResp struct {
-		Events []struct{ ID string `json:"id"` } `json:"events"`
+		Events []struct {
+			ID string `json:"id"`
+		} `json:"events"`
 	}
 	json.Unmarshal(w.Body.Bytes(), &eventsResp)
 	if len(eventsResp.Events) == 0 {
@@ -305,6 +413,7 @@ func TestAllocateInvalidQuantity(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.db.Close()
 	defer env.rdb.FlushDB(nil)
+	defer env.close()
 
 	// Quantity 0 should fail
 	w := env.authRequest("POST", "/api/events/fake-id/allocate", map[string]interface{}{
