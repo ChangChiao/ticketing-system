@@ -4,10 +4,13 @@
 
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
-import { Counter, Rate, Trend } from 'k6/metrics';
+import crypto from 'k6/crypto';
+import { Rate, Trend } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const EVENT_ID = __ENV.EVENT_ID || 'e0000000-0000-0000-0000-000000000001';
+const REQUEST_SIGN_SECRET = __ENV.REQUEST_SIGN_SECRET || '';
+const CAPTCHA_TOKEN = __ENV.CAPTCHA_TOKEN || '';
 
 // Custom metrics
 const queueJoinDuration = new Trend('queue_join_duration');
@@ -83,13 +86,36 @@ function registerUser() {
   return null;
 }
 
-function authHeaders(token) {
-  return {
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
+function protectedHeaders(token, method, path) {
+  const timestamp = Date.now().toString();
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    'X-Device-Fingerprint': `k6-${__VU}`,
   };
+  if (CAPTCHA_TOKEN) {
+    headers['X-Captcha-Token'] = CAPTCHA_TOKEN;
+  }
+  if (REQUEST_SIGN_SECRET) {
+    headers['X-Request-Timestamp'] = timestamp;
+    headers['X-Request-Signature'] = crypto.hmac(
+      'sha256',
+      REQUEST_SIGN_SECRET,
+      method + path + timestamp,
+      'hex'
+    );
+  }
+  return {
+    headers,
+  };
+}
+
+function protectedGet(token, path) {
+  return http.get(`${BASE_URL}${path}`, protectedHeaders(token, 'GET', path));
+}
+
+function protectedPost(token, path, body = null) {
+  return http.post(`${BASE_URL}${path}`, body, protectedHeaders(token, 'POST', path));
 }
 
 // Scenario 1: Browsing (unauthenticated)
@@ -121,11 +147,8 @@ export function queueRush() {
 
   group('Queue Join', () => {
     const start = Date.now();
-    const res = http.post(
-      `${BASE_URL}/api/events/${EVENT_ID}/queue/join`,
-      null,
-      authHeaders(token)
-    );
+    const path = `/api/events/${EVENT_ID}/queue/join`;
+    const res = protectedPost(token, path);
     queueJoinDuration.add(Date.now() - start);
 
     const success = check(res, {
@@ -142,10 +165,7 @@ export function queueRush() {
 
     // Check position
     if (res.status === 200) {
-      const posRes = http.get(
-        `${BASE_URL}/api/events/${EVENT_ID}/queue/position`,
-        authHeaders(token)
-      );
+      const posRes = protectedGet(token, `/api/events/${EVENT_ID}/queue/position`);
       check(posRes, { 'position 200': (r) => r.status === 200 });
     }
   });
@@ -162,6 +182,27 @@ export function seatAllocation() {
   }
 
   group('Seat Allocation', () => {
+    const joinPath = `/api/events/${EVENT_ID}/queue/join`;
+    const joinRes = protectedPost(token, joinPath);
+    if (joinRes.status !== 200 && joinRes.status !== 409) {
+      allocErrors.add(1);
+      return;
+    }
+
+    let admitted = false;
+    for (let i = 0; i < 36; i++) {
+      const enterRes = protectedPost(token, `/api/events/${EVENT_ID}/queue/enter`, JSON.stringify({}));
+      if (enterRes.status === 200) {
+        admitted = true;
+        break;
+      }
+      sleep(5);
+    }
+    if (!admitted) {
+      allocErrors.add(1);
+      return;
+    }
+
     // Get available sections
     const availRes = http.get(`${BASE_URL}/api/events/${EVENT_ID}/availability`);
     if (availRes.status !== 200) {
@@ -187,10 +228,11 @@ export function seatAllocation() {
 
     // Allocate seats
     const start = Date.now();
-    const allocRes = http.post(
-      `${BASE_URL}/api/events/${EVENT_ID}/allocate`,
-      JSON.stringify({ section_id: section.section_id, quantity }),
-      authHeaders(token)
+    const allocPath = `/api/events/${EVENT_ID}/allocate`;
+    const allocRes = protectedPost(
+      token,
+      allocPath,
+      JSON.stringify({ section_id: section.section_id, quantity })
     );
     seatAllocDuration.add(Date.now() - start);
 
@@ -209,14 +251,14 @@ export function seatAllocation() {
         return;
       }
 
-      const orderRes = http.post(
-        `${BASE_URL}/api/orders`,
+      const orderRes = protectedPost(
+        token,
+        '/api/orders',
         JSON.stringify({
           event_id: EVENT_ID,
           seats: allocData.seats,
           price_per_seat: 2800,
-        }),
-        authHeaders(token)
+        })
       );
       check(orderRes, {
         'order created or payment service down': (r) =>
