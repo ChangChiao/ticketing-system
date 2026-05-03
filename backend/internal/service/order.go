@@ -264,3 +264,11 @@ func (s *OrderService) CancelOrder(ctx context.Context, orderID string) error {
 	}
 	return nil
 }
+
+func (s *OrderService) CancelUserOrder(ctx context.Context, orderID, userID string) (*model.Order, error) {
+	order, err := s.repo.GetByIDForUser(ctx, orderID, userID)
+	if err != nil {
+		return nil, err
+	}
+	return order, s.CancelOrder(ctx, orderID)
+}

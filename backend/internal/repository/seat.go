@@ -131,6 +131,22 @@ func (r *SeatRepository) ReleaseSeats(ctx context.Context, eventID string, seatI
 	return err
 }
 
+func (r *SeatRepository) ReleaseSeatsForUser(ctx context.Context, eventID, userID string, seatIDs []string) (int64, error) {
+	query := `
+		UPDATE event_seats
+		SET status = 'available', locked_by = NULL, locked_at = NULL
+		WHERE event_id = $1
+			AND id = ANY($2)
+			AND status = 'locked'
+			AND locked_by = $3
+	`
+	result, err := r.db.ExecContext(ctx, query, eventID, pq.Array(seatIDs), userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (r *SeatRepository) ReleaseExpiredLocks(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE event_seats

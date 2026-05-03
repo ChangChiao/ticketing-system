@@ -144,8 +144,10 @@ func main() {
 			protected.GET("/events/:id/queue/position", queueHandler.GetPosition)
 			protected.POST("/events/:id/queue/enter", queueHandler.EnterSelection)
 			protected.POST("/events/:id/allocate", seatHandler.AllocateSeats)
+			protected.POST("/events/:id/allocation/release", seatHandler.ReleaseAllocation)
 			protected.POST("/orders", orderHandler.CreateOrder)
 			protected.POST("/orders/:id/payment", orderHandler.CreatePayment)
+			protected.POST("/orders/:id/cancel", orderHandler.CancelOrder)
 			protected.GET("/orders", orderHandler.ListOrders)
 			protected.GET("/orders/:id", orderHandler.GetOrder)
 		}

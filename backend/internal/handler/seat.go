@@ -78,3 +78,33 @@ func (h *SeatHandler) AllocateSeats(c *gin.Context) {
 	resultLabel = "success"
 	c.JSON(http.StatusOK, result)
 }
+
+func (h *SeatHandler) ReleaseAllocation(c *gin.Context) {
+	eventID := c.Param("id")
+	userID := c.GetString("user_id")
+
+	var req struct {
+		Seats []struct {
+			EventSeatID string `json:"event_seat_id" binding:"required"`
+		} `json:"seats" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少要釋放的座位"})
+		return
+	}
+
+	seatIDs := make([]string, 0, len(req.Seats))
+	for _, seat := range req.Seats {
+		seatIDs = append(seatIDs, seat.EventSeatID)
+	}
+
+	if err := h.svc.ReleaseLockedSeatsForUser(c.Request.Context(), eventID, userID, seatIDs); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "座位已失效或無法釋放"})
+		return
+	}
+
+	if h.queueSvc != nil {
+		_ = h.queueSvc.RestoreSelection(c.Request.Context(), eventID, userID)
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "released"})
+}

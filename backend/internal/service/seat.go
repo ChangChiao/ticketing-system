@@ -149,6 +149,35 @@ func (s *SeatService) ReleaseSeatsByEvent(ctx context.Context, eventID string, s
 	return nil
 }
 
+func (s *SeatService) ReleaseLockedSeatsForUser(ctx context.Context, eventID, userID string, seatIDs []string) error {
+	if len(seatIDs) == 0 {
+		return nil
+	}
+	seats, err := s.repo.GetLockedSeatsForOrder(ctx, eventID, userID, seatIDs)
+	if err != nil {
+		return err
+	}
+	if len(seats) != len(seatIDs) {
+		return ErrInvalidSeatLock
+	}
+	released, err := s.repo.ReleaseSeatsForUser(ctx, eventID, userID, seatIDs)
+	if err != nil {
+		return err
+	}
+	if released != int64(len(seatIDs)) {
+		return ErrInvalidSeatLock
+	}
+	if err := s.redis.UnlockSeats(ctx, eventID, seatIDs); err != nil {
+		return err
+	}
+
+	availability, _ := s.repo.GetAvailability(ctx, eventID)
+	for _, a := range availability {
+		_ = s.redis.PublishAvailability(ctx, eventID, a.SectionID, a.Remaining)
+	}
+	return nil
+}
+
 func (s *SeatService) ConfirmSeats(ctx context.Context, eventID string, seatIDs []string) error {
 	if err := s.repo.MarkSeatsAsSold(ctx, eventID, seatIDs); err != nil {
 		return err

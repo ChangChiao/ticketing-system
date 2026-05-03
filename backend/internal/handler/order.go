@@ -149,6 +149,20 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"order": order, "items": items})
 }
 
+func (h *OrderHandler) CancelOrder(c *gin.Context) {
+	orderID := c.Param("id")
+	userID := c.GetString("user_id")
+
+	order, err := h.svc.CancelUserOrder(c.Request.Context(), orderID, userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "找不到此訂單"})
+		return
+	}
+	h.restoreSelection(c, order.EventID, order.UserID)
+	middleware.PaymentTotal.WithLabelValues("cancelled").Inc()
+	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
+}
+
 func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 	transactionID := c.Query("transactionId")
 	orderID := c.Query("orderId")
