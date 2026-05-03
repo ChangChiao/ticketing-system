@@ -20,7 +20,7 @@ export default function SelectPage() {
   const [loading, setLoading] = useState(true);
   const [allocating, setAllocating] = useState(false);
   const [error, setError] = useState("");
-  const [timer, setTimer] = useState(600); // 10 min countdown
+  const [timer, setTimer] = useState(600);
   const wsRef = useRef<WebSocket | null>(null);
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
@@ -95,8 +95,23 @@ export default function SelectPage() {
   }, [eventId, token, handleAvailabilityUpdate]);
 
   useEffect(() => {
+    const storedSelectionExpiry = sessionStorage.getItem("selection_expires_at");
+    if (storedSelectionExpiry) {
+      const remaining = Math.max(
+        0,
+        Math.floor((new Date(storedSelectionExpiry).getTime() - Date.now()) / 1000)
+      );
+      setTimer(remaining);
+    }
+
     const interval = setInterval(() => {
-      setTimer((t) => (t > 0 ? t - 1 : 0));
+      setTimer((t) => {
+        if (t <= 1) {
+          sessionStorage.removeItem("selection_expires_at");
+          return 0;
+        }
+        return t - 1;
+      });
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -124,6 +139,7 @@ export default function SelectPage() {
           price_per_seat: selectedSectionData?.price || 0,
         })
       );
+      sessionStorage.removeItem("selection_expires_at");
 
       router.push(`/events/${eventId}/checkout`);
     } catch (err) {
@@ -150,9 +166,9 @@ export default function SelectPage() {
   return (
     <div className="flex flex-col h-full">
       <Navbar />
-      <main className="flex-1 flex gap-8 px-12 py-8 overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row gap-6 lg:gap-8 px-4 sm:px-6 lg:px-12 py-6 lg:py-8 overflow-auto lg:overflow-hidden">
         {/* Map column */}
-        <div className="flex-1 flex flex-col gap-5 min-h-0">
+        <div className="flex-1 flex flex-col gap-5 min-h-[420px] lg:min-h-0">
           <div className="flex items-center justify-between">
             <h1 className="font-display text-2xl font-bold">VENUE MAP</h1>
             <div className="flex items-center gap-2 bg-[var(--bg-card)] rounded-xl px-3.5 py-1.5">
@@ -175,7 +191,7 @@ export default function SelectPage() {
         </div>
 
         {/* Side panel */}
-        <div className="w-[340px] shrink-0 flex flex-col gap-5 overflow-auto">
+        <div className="w-full lg:w-[340px] shrink-0 flex flex-col gap-5 overflow-visible lg:overflow-auto">
           {/* Legend */}
           <div className="bg-[var(--bg-card)] rounded-[var(--radius)] p-5 flex flex-col gap-3">
             <span className="font-display text-sm font-semibold text-[var(--accent-orange)]">[LEGEND]</span>

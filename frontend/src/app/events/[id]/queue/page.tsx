@@ -131,7 +131,8 @@ export default function QueuePage() {
   const handleEnterSelection = async () => {
     if (turnTimerRef.current) clearTimeout(turnTimerRef.current);
     try {
-      await api.enterSelection(eventId);
+      const result = await api.enterSelection(eventId);
+      sessionStorage.setItem("selection_expires_at", result.expires_at);
       wsRef.current?.close();
       router.push(`/events/${eventId}/select`);
     } catch (err) {
@@ -167,7 +168,7 @@ export default function QueuePage() {
   return (
     <div className="flex flex-col h-full">
       <Navbar />
-      <main className="flex-1 flex flex-col items-center justify-center gap-10 px-12 py-10">
+      <main className="flex-1 flex flex-col items-center justify-center gap-8 px-4 sm:px-8 lg:px-12 py-8 lg:py-10 overflow-auto">
         {status === "captcha" && (
           <div className="flex flex-col items-center gap-6">
             <h1 className="font-display text-3xl font-bold">VERIFY</h1>
@@ -205,18 +206,18 @@ export default function QueuePage() {
             </div>
 
             {/* Stats */}
-            <div className="flex gap-8">
-              <div className="w-[200px] bg-[var(--bg-card)] rounded-[var(--radius)] p-6 flex flex-col items-center gap-2">
+            <div className="w-full max-w-[664px] flex flex-col md:flex-row gap-4 lg:gap-8">
+              <div className="w-full md:w-[200px] bg-[var(--bg-card)] rounded-[var(--radius)] p-5 lg:p-6 flex flex-col items-center gap-2">
                 <span className="font-mono text-[11px] text-[var(--text-secondary)]">// your_position</span>
                 <span className="font-display text-5xl font-bold text-[var(--accent-orange)]">{positionDisplay}</span>
                 <span className="font-mono text-[11px] text-[var(--text-secondary)]">of {totalInQueue.toLocaleString()} in queue</span>
               </div>
-              <div className="w-[200px] bg-[var(--bg-card)] rounded-[var(--radius)] p-6 flex flex-col items-center gap-2">
+              <div className="w-full md:w-[200px] bg-[var(--bg-card)] rounded-[var(--radius)] p-5 lg:p-6 flex flex-col items-center gap-2">
                 <span className="font-mono text-[11px] text-[var(--text-secondary)]">// est_wait_time</span>
                 <span className="font-display text-5xl font-bold text-[var(--accent-teal)]">~{estimatedWait || "?"}</span>
                 <span className="font-mono text-[11px] text-[var(--text-secondary)]">minutes remaining</span>
               </div>
-              <div className="w-[200px] bg-[var(--bg-card)] rounded-[var(--radius)] p-6 flex flex-col items-center gap-2">
+              <div className="w-full md:w-[200px] bg-[var(--bg-card)] rounded-[var(--radius)] p-5 lg:p-6 flex flex-col items-center gap-2">
                 <span className="font-mono text-[11px] text-[var(--text-secondary)]">// people_ahead</span>
                 <span className="font-display text-5xl font-bold">{peopleAhead}</span>
                 <span className="font-mono text-[11px] text-[var(--text-secondary)]">users before you</span>
@@ -224,7 +225,7 @@ export default function QueuePage() {
             </div>
 
             {/* Progress bar */}
-            <div className="w-[664px] flex flex-col items-center gap-3">
+            <div className="w-full max-w-[664px] flex flex-col items-center gap-3">
               <div className="w-full h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-[var(--accent-orange)] to-[var(--accent-teal)] transition-all duration-1000"
@@ -266,7 +267,7 @@ export default function QueuePage() {
 
             <button
               onClick={handleEnterSelection}
-              className="w-80 h-[52px] bg-[var(--accent-orange)] text-[var(--text-on-accent)] rounded-[var(--radius)] font-display text-lg font-semibold hover:brightness-110 transition animate-pulse"
+              className="w-full max-w-80 h-[52px] bg-[var(--accent-orange)] text-[var(--text-on-accent)] rounded-[var(--radius)] font-display text-lg font-semibold hover:brightness-110 transition animate-pulse"
             >
               進入選位
             </button>

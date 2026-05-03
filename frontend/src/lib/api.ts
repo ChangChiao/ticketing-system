@@ -92,6 +92,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  releaseAllocation: (eventId: string, seats: SeatInfo[]) =>
+    fetchProtectedAPI<{ status: string }>(`/events/${eventId}/allocation/release`, {
+      method: "POST",
+      body: JSON.stringify({ seats }),
+    }),
 
   // Orders (protected — routed through BFF proxy)
   createOrder: (data: {
@@ -105,6 +110,11 @@ export const api = {
     }),
   createPayment: (orderId: string) =>
     fetchProtectedAPI<CreateOrderResponse>(`/orders/${orderId}/payment`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  cancelOrder: (orderId: string) =>
+    fetchProtectedAPI<{ status: string }>(`/orders/${orderId}/cancel`, {
       method: "POST",
       body: JSON.stringify({}),
     }),

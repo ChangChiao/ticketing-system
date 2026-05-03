@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
 import { getWebSocketBaseURL } from "@/lib/ws";
+import { api } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 
 export default function PaymentPage() {
@@ -14,6 +15,12 @@ export default function PaymentPage() {
   const [status, setStatus] = useState<"redirecting" | "timeout" | "error">("redirecting");
   const [countdown, setCountdown] = useState(600); // 10 minutes
   const [warning, setWarning] = useState("");
+
+  const clearPendingPayment = () => {
+    sessionStorage.removeItem("pending_order_id");
+    sessionStorage.removeItem("pending_payment_url");
+    sessionStorage.removeItem("pending_payment_expires_at");
+  };
 
   useEffect(() => {
     const pendingOrderId = sessionStorage.getItem("pending_order_id");
@@ -51,8 +58,7 @@ export default function PaymentPage() {
           if (msg.data.type === "timeout") {
             setStatus("timeout");
             setCountdown(0);
-            sessionStorage.removeItem("pending_order_id");
-            sessionStorage.removeItem("pending_payment_url");
+            clearPendingPayment();
             return;
           }
           setCountdown((current) => Math.min(current, 120));
@@ -69,14 +75,20 @@ export default function PaymentPage() {
     const pendingOrderId = sessionStorage.getItem("pending_order_id");
     if (!pendingOrderId) return;
 
-    // Start countdown for the 10-minute payment window
+    const expiresAt = sessionStorage.getItem("pending_payment_expires_at");
+    if (expiresAt) {
+      setCountdown(
+        Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000))
+      );
+    }
+
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
           setStatus("timeout");
-          sessionStorage.removeItem("pending_order_id");
-          sessionStorage.removeItem("pending_payment_url");
+          void api.cancelOrder(pendingOrderId).catch(() => undefined);
+          clearPendingPayment();
           return 0;
         }
         return prev - 1;
@@ -90,11 +102,20 @@ export default function PaymentPage() {
   const seconds = countdown % 60;
   const isUrgent = countdown <= 120;
 
+  const handleCancelPayment = async () => {
+    const pendingOrderId = sessionStorage.getItem("pending_order_id");
+    if (pendingOrderId) {
+      await api.cancelOrder(pendingOrderId).catch(() => undefined);
+    }
+    clearPendingPayment();
+    router.push(`/events/${eventId}/select?error=payment_cancelled`);
+  };
+
   if (status === "timeout") {
     return (
       <div className="flex flex-col h-full">
         <Navbar />
-        <main className="flex-1 flex flex-col items-center justify-center gap-6 px-[200px]">
+        <main className="flex-1 flex flex-col items-center justify-center gap-6 px-4 sm:px-8 lg:px-[200px] text-center">
           <div className="w-24 h-24 rounded-full border-2 border-[var(--status-red)] bg-[#ef444422] flex items-center justify-center">
             <span className="text-4xl text-[var(--status-red)]">✕</span>
           </div>
@@ -118,7 +139,7 @@ export default function PaymentPage() {
   return (
     <div className="flex flex-col h-full">
       <Navbar />
-      <main className="flex-1 flex flex-col items-center justify-center gap-8 px-[200px]">
+      <main className="flex-1 flex flex-col items-center justify-center gap-8 px-4 sm:px-8 lg:px-[200px] text-center">
         <div className="animate-spin rounded-full h-16 w-16 border-4 border-[var(--accent-teal)] border-t-transparent" />
 
         <div className="text-center">
@@ -163,7 +184,7 @@ export default function PaymentPage() {
         </div>
 
         <button
-          onClick={() => router.push(`/events/${eventId}/select`)}
+          onClick={handleCancelPayment}
           className="font-mono text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
         >
           // cancel_and_return_to_selection

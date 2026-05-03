@@ -47,15 +47,22 @@ export default function CheckoutPage() {
 
       if (remaining === 0) {
         clearInterval(timer);
+        if (pendingOrderId) {
+          void api.cancelOrder(pendingOrderId).catch(() => undefined);
+        } else {
+          void api.releaseAllocation(eventId, allocation.seats).catch(() => undefined);
+        }
         sessionStorage.removeItem("allocation");
         sessionStorage.removeItem("pending_checkout_order_id");
         sessionStorage.removeItem("pending_order_id");
+        sessionStorage.removeItem("pending_payment_url");
+        sessionStorage.removeItem("pending_payment_expires_at");
         router.push(`/events/${eventId}/select`);
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [allocation, eventId, router]);
+  }, [allocation, eventId, pendingOrderId, router]);
 
   const handleCheckout = async () => {
     if (!allocation || !token) return;
@@ -73,6 +80,7 @@ export default function CheckoutPage() {
 
       sessionStorage.setItem("pending_order_id", result.id);
       sessionStorage.setItem("pending_checkout_order_id", result.id);
+      sessionStorage.setItem("pending_payment_expires_at", allocation.expires_at);
       setPendingOrderId(result.id);
       if (!result.payment_url) {
         setError(result.payment_error || "付款服務暫時無法使用，請稍後再試");
@@ -92,6 +100,26 @@ export default function CheckoutPage() {
     }
   };
 
+  const handleCancel = async () => {
+    if (!allocation) return;
+    setError("");
+    try {
+      if (pendingOrderId) {
+        await api.cancelOrder(pendingOrderId);
+      } else {
+        await api.releaseAllocation(eventId, allocation.seats);
+      }
+      sessionStorage.removeItem("allocation");
+      sessionStorage.removeItem("pending_checkout_order_id");
+      sessionStorage.removeItem("pending_order_id");
+      sessionStorage.removeItem("pending_payment_url");
+      sessionStorage.removeItem("pending_payment_expires_at");
+      router.push(`/events/${eventId}/select`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "取消失敗，請稍後再試");
+    }
+  };
+
   if (!allocation) return null;
 
   const total = allocation.price_per_seat * allocation.seats.length;
@@ -108,7 +136,7 @@ export default function CheckoutPage() {
   return (
     <div className="flex flex-col h-full">
       <Navbar />
-      <main className="flex-1 flex flex-col items-center px-[200px] py-10 gap-8 overflow-auto">
+      <main className="flex-1 flex flex-col items-center px-4 sm:px-8 lg:px-[200px] py-8 lg:py-10 gap-6 lg:gap-8 overflow-auto">
         <div className="text-center">
           <h1 className="font-display text-[32px] font-bold">ORDER CONFIRMATION</h1>
           <p className="font-mono text-[13px] text-[var(--text-secondary)] mt-2">
@@ -130,7 +158,7 @@ export default function CheckoutPage() {
         </div>
 
         {/* Order card */}
-        <div className="w-full bg-[var(--bg-card)] rounded-[var(--radius)] p-6 flex flex-col gap-5">
+        <div className="w-full max-w-4xl bg-[var(--bg-card)] rounded-[var(--radius)] p-5 lg:p-6 flex flex-col gap-5">
           <span className="font-display text-base font-semibold text-[var(--accent-orange)]">
             [ORDER_DETAILS]
           </span>
@@ -139,7 +167,7 @@ export default function CheckoutPage() {
             <div key={i}>
               <div className="flex items-center justify-between">
                 <span className="font-mono text-xs text-[var(--text-secondary)]">{row.label}</span>
-                <span className="font-mono text-xs font-semibold">{row.value}</span>
+                <span className="font-mono text-xs font-semibold text-right break-words max-w-[65%]">{row.value}</span>
               </div>
               {i < orderRows.length - 1 && (
                 <div className="h-px bg-[var(--bg-elevated)] mt-5" />
@@ -171,7 +199,7 @@ export default function CheckoutPage() {
         </button>
 
         <button
-          onClick={() => router.push(`/events/${eventId}/select`)}
+          onClick={handleCancel}
           className="font-mono text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
         >
           // cancel_and_return_to_selection
