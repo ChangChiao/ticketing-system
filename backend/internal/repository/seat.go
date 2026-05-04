@@ -153,6 +153,13 @@ func (r *SeatRepository) ReleaseExpiredLocks(ctx context.Context) error {
 		SET status = 'available', locked_by = NULL, locked_at = NULL
 		WHERE status = 'locked'
 			AND locked_at < NOW() - INTERVAL '10 minutes'
+			AND NOT EXISTS (
+				SELECT 1
+				FROM order_items oi
+				JOIN orders o ON o.id = oi.order_id
+				WHERE oi.event_seat_id = event_seats.id
+					AND o.status = 'payment_pending'
+			)
 	`)
 	return err
 }

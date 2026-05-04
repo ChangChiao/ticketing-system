@@ -199,8 +199,9 @@ func (s *OrderService) ConfirmOrder(ctx context.Context, orderID, transactionID 
 		CreatedAt:     time.Now(),
 	}
 
-	// All DB writes in a single transaction: mark seats sold + create payment + update order
-	if err := s.repo.ConfirmOrderTx(ctx, orderID, order.EventID, seatIDs, payment); err != nil {
+	// All DB writes in a single transaction: mark seats sold + create payment + update order.
+	allowExpiredLocks := order.Status == "payment_pending"
+	if err := s.repo.ConfirmOrderTx(ctx, orderID, order.EventID, order.UserID, seatIDs, payment, []string{"pending", "payment_pending"}, allowExpiredLocks); err != nil {
 		return err
 	}
 
@@ -228,8 +229,21 @@ func (s *OrderService) AreSeatsExpired(ctx context.Context, orderID string) (boo
 }
 
 // MarkPaymentPending sets order status to payment_pending for manual review.
-func (s *OrderService) MarkPaymentPending(ctx context.Context, orderID string) error {
-	return s.repo.UpdateStatus(ctx, orderID, "payment_pending")
+func (s *OrderService) MarkPaymentPending(ctx context.Context, orderID, transactionID string) error {
+	order, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	payment := &model.Payment{
+		ID:            uuid.New().String(),
+		OrderID:       orderID,
+		TransactionID: transactionID,
+		Method:        "linepay",
+		Amount:        order.Total,
+		Status:        "pending",
+		CreatedAt:     time.Now(),
+	}
+	return s.repo.MarkPaymentPendingTx(ctx, orderID, payment)
 }
 
 // ValidateCallbackToken verifies that the provided token matches the order's stored callback_token.
@@ -255,13 +269,17 @@ func (s *OrderService) CancelOrder(ctx context.Context, orderID string) error {
 	for i, item := range items {
 		seatIDs[i] = item.EventSeatID
 	}
-	if err := s.seatSvc.ReleaseSeatsByEvent(ctx, order.EventID, seatIDs); err != nil {
-		return err
-	}
-	_, err = s.repo.UpdateStatusIfCurrent(ctx, orderID, "cancelled", []string{"pending", "payment_pending"})
+	cancelled, err := s.repo.CancelOrderTx(ctx, order, seatIDs, []string{"pending", "payment_pending"})
 	if err != nil {
 		return err
 	}
+	if !cancelled {
+		return nil
+	}
+	if err := s.redis.UnlockSeats(ctx, order.EventID, seatIDs); err != nil {
+		log.Printf("cancel order %s: unlock redis seats: %v", orderID, err)
+	}
+	s.seatSvc.PublishAvailabilityUpdate(ctx, order.EventID)
 	return nil
 }
 

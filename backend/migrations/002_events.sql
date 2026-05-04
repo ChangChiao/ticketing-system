@@ -3,6 +3,7 @@ CREATE TABLE events (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     venue_id UUID NOT NULL REFERENCES venues(id),
     title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
     event_date TIMESTAMP WITH TIME ZONE NOT NULL,
     sale_start TIMESTAMP WITH TIME ZONE NOT NULL,
     sale_end TIMESTAMP WITH TIME ZONE NOT NULL,

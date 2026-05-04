@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
@@ -160,42 +161,151 @@ func (r *OrderRepository) UpdatePaymentStatus(ctx context.Context, orderID, stat
 	return err
 }
 
-// ConfirmOrderTx marks seats as sold, creates a payment record, and updates order status in a single transaction.
-func (r *OrderRepository) ConfirmOrderTx(ctx context.Context, orderID, eventID string, seatIDs []string, payment *model.Payment) error {
+func (r *OrderRepository) MarkPaymentPendingTx(ctx context.Context, orderID string, payment *model.Payment) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	// Mark seats as sold
-	_, err = tx.ExecContext(ctx, `
-		UPDATE event_seats SET status = 'sold'
-		WHERE event_id = $1 AND id = ANY($2)
-	`, eventID, pq.Array(seatIDs))
+	result, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET status = 'payment_pending', updated_at = NOW()
+		WHERE id = $1 AND status = 'pending'
+	`, orderID)
 	if err != nil {
 		return err
 	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return fmt.Errorf("order %s is not pending", orderID)
+	}
 
-	// Create payment record
 	_, err = tx.NamedExecContext(ctx, `
-		INSERT INTO payments (id, order_id, transaction_id, method, amount, status, created_at)
-		VALUES (:id, :order_id, :transaction_id, :method, :amount, :status, :created_at)
+		INSERT INTO payments (id, order_id, transaction_id, method, amount, status, created_at, confirmed_at)
+		VALUES (:id, :order_id, :transaction_id, :method, :amount, :status, :created_at,
+			CASE WHEN :status = 'confirmed' THEN NOW() ELSE NULL END)
+		ON CONFLICT (order_id) DO UPDATE
+		SET transaction_id = EXCLUDED.transaction_id,
+			method = EXCLUDED.method,
+			amount = EXCLUDED.amount,
+			status = EXCLUDED.status
 	`, payment)
 	if err != nil {
 		return err
 	}
 
-	// Update order status
-	_, err = tx.ExecContext(ctx, `
-		UPDATE orders SET status = 'confirmed', updated_at = NOW()
-		WHERE id = $1
-	`, orderID)
+	return tx.Commit()
+}
+
+// ConfirmOrderTx marks seats as sold, creates a payment record, and updates order status in a single transaction.
+func (r *OrderRepository) ConfirmOrderTx(ctx context.Context, orderID, eventID, userID string, seatIDs []string, payment *model.Payment, currentStatuses []string, allowExpiredLocks bool) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	orderResult, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET status = 'confirmed', updated_at = NOW()
+		WHERE id = $1 AND status = ANY($2)
+	`, orderID, pq.Array(currentStatuses))
+	if err != nil {
+		return err
+	}
+	orderAffected, err := orderResult.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if orderAffected != 1 {
+		return fmt.Errorf("order %s is not confirmable", orderID)
+	}
+
+	// Mark seats as sold
+	seatResult, err := tx.ExecContext(ctx, `
+		UPDATE event_seats
+		SET status = 'sold', locked_by = NULL, locked_at = NULL
+		WHERE event_id = $1
+			AND id = ANY($2)
+			AND status = 'locked'
+			AND locked_by = $3
+			AND ($4 OR locked_at >= NOW() - INTERVAL '10 minutes')
+	`, eventID, pq.Array(seatIDs), userID, allowExpiredLocks)
+	if err != nil {
+		return err
+	}
+	seatAffected, err := seatResult.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if seatAffected != int64(len(seatIDs)) {
+		return fmt.Errorf("confirmed %d of %d requested seats", seatAffected, len(seatIDs))
+	}
+
+	// Create payment record
+	_, err = tx.NamedExecContext(ctx, `
+		INSERT INTO payments (id, order_id, transaction_id, method, amount, status, created_at, confirmed_at)
+		VALUES (:id, :order_id, :transaction_id, :method, :amount, :status, :created_at,
+			CASE WHEN :status = 'confirmed' THEN NOW() ELSE NULL END)
+		ON CONFLICT (order_id) DO UPDATE
+		SET transaction_id = EXCLUDED.transaction_id,
+			method = EXCLUDED.method,
+			amount = EXCLUDED.amount,
+			status = EXCLUDED.status,
+			confirmed_at = NOW()
+	`, payment)
 	if err != nil {
 		return err
 	}
 
 	return tx.Commit()
+}
+
+func (r *OrderRepository) CancelOrderTx(ctx context.Context, order *model.Order, seatIDs []string, currentStatuses []string) (bool, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET status = 'cancelled', updated_at = NOW()
+		WHERE id = $1 AND status = ANY($2)
+	`, order.ID, pq.Array(currentStatuses))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected != 1 {
+		return false, nil
+	}
+
+	if len(seatIDs) > 0 {
+		_, err = tx.ExecContext(ctx, `
+			UPDATE event_seats
+			SET status = 'available', locked_by = NULL, locked_at = NULL
+			WHERE event_id = $1
+				AND id = ANY($2)
+				AND status = 'locked'
+				AND locked_by = $3
+		`, order.EventID, pq.Array(seatIDs), order.UserID)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ValidateCallbackToken checks if the given token matches the order's callback_token.

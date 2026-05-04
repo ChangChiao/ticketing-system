@@ -228,7 +228,7 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 		middleware.PaymentTotal.WithLabelValues("failed").Inc()
 		middleware.ErrorsTotal.WithLabelValues("line_pay_error").Inc()
 		// Mark as payment_pending for manual review
-		_ = h.svc.MarkPaymentPending(c.Request.Context(), orderID)
+		_ = h.svc.MarkPaymentPending(c.Request.Context(), orderID, transactionID)
 		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation")
 		return
 	}
@@ -237,6 +237,10 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 		log.Printf("Failed to confirm order %s: %v", orderID, err)
 		middleware.PaymentTotal.WithLabelValues("failed").Inc()
 		middleware.ErrorsTotal.WithLabelValues("confirm_failed").Inc()
+		if pendingErr := h.svc.MarkPaymentPending(c.Request.Context(), orderID, transactionID); pendingErr != nil {
+			log.Printf("Failed to mark order %s payment_pending after local confirm failure: %v", orderID, pendingErr)
+			middleware.ErrorsTotal.WithLabelValues("mark_payment_pending_failed").Inc()
+		}
 		c.Redirect(http.StatusFound, "/orders/"+orderID+"/confirmation?error=confirm_failed")
 		return
 	}
